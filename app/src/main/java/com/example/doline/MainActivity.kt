@@ -1,0 +1,117 @@
+package com.example.doline
+
+import android.app.Application
+import android.os.Build
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.annotation.RequiresApi
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.toArgb
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.example.doline.views.screens.welcome.LoginScreen
+import com.example.doline.views.screens.stores.StoresListScreen
+import com.example.doline.views.screens.welcome.RegisterScreen
+import com.example.doline.views.screens.welcome.WelcomeScreen
+import com.example.doline.ui.theme.AppTheme
+import com.example.doline.ui.theme.backgroundLight
+import com.example.doline.views.components.AppText
+import com.example.doline.views.components.Screen
+import dagger.hilt.android.AndroidEntryPoint
+import dagger.hilt.android.HiltAndroidApp
+import com.example.doline.views.screens.ErrorScreen
+import com.example.doline.views.screens.store.StoreMain
+import com.example.doline.views.screens.stores.CreateStoreScreen
+import com.example.doline.views.screens.welcome.InitializationScreen
+import com.example.doline.views.screens.welcome.SplashScreen
+
+
+@AndroidEntryPoint
+class MainActivity : ComponentActivity() {
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge(
+            navigationBarStyle = SystemBarStyle.light(
+                scrim = backgroundLight.toArgb(),
+                darkScrim = backgroundLight.toArgb()
+            )
+        )
+        setContent {
+            AppTheme {
+                AppNavigation()
+            }
+        }
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+@Composable
+fun AppNavigation() {
+    val navController = rememberNavController()
+
+    NavHost(
+        navController = navController,
+        startDestination = "splash"
+    ) {
+        // Welcome screens
+        composable("splash") {
+            SplashScreen(navController)
+        }
+        composable("welcome") {
+            WelcomeScreen(navController)
+        }
+        composable("login") {
+            LoginScreen(navController)
+        }
+        composable("register") {
+            RegisterScreen(navController)
+        }
+        composable("initialization") {
+            InitializationScreen(navController)
+        }
+        composable("error") {
+            ErrorScreen(navController)
+        }
+
+        // Stores' links
+        composable("stores") {
+            StoresListScreen(navController)
+        }
+        composable("stores/create-store") {
+            CreateStoreScreen(navController)
+        }
+
+        // Entry point to any store’s tabbed app (dynamic route)
+        composable(
+            route = "stores/{storeId}",
+            listOf(navArgument("storeId") { type = NavType.LongType })
+        ) { backStackEntry ->
+            val storeId = backStackEntry.arguments?.getLong("storeId")
+            StoreMain(storeId)
+        }
+    }
+
+}
+
+@HiltAndroidApp
+class Doline : Application()
+
+@Composable
+fun SampleScree(){
+    Screen(
+        topAppBar = {}
+    ) {
+        AppText("Sample Screen")
+    }
+}
+
+
+
