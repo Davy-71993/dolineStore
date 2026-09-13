@@ -7,6 +7,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import com.example.doline.zeroed
 import kotlinx.coroutines.flow.Flow
 
 
@@ -155,7 +156,7 @@ interface NoteDao {
 @Dao
 interface CartItemDao {
     @Query("SELECT * FROM cart_items")
-    fun getAllItems(): Flow<List<CartItemEntity>>
+    fun getAllItems(): Flow<List<CartItem>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(item: CartItemEntity): Long
@@ -169,3 +170,109 @@ interface CartItemDao {
     @Query("DELETE FROM cart_items")
     suspend fun clearCart()
 }
+
+@Dao
+interface OrderDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(orderEntity: OrderEntity) : Long
+
+    @Transaction
+    @Query("SELECT * FROM orders WHERE storeId = :storeId")
+    fun getStoreOrders(storeId: Long) : Flow<List<Order>>
+
+    @Transaction
+    @Query("SELECT * FROM orders WHERE id = :orderId")
+    fun getOrderById(orderId: Long) : Flow<Order>
+
+    @Update
+    suspend fun editOrder(order: OrderEntity)
+
+    @Query("""
+        UPDATE orders SET creditBalance = creditBalance - :amount WHERE id = :orderId AND creditBalance IS NOT NULL AND creditBalance >= :amount
+    """)
+    suspend fun pay(orderId: Long, amount: Double): Int
+
+    @Insert
+    suspend fun insertPayment(cp: CreditPayment): Long
+
+    @Transaction
+    suspend fun updateCreditBalance(amount: Double, orderId: Long){
+        val updated = pay(orderId, amount)
+        if (updated == 0){
+            throw IllegalStateException("Failed to make payments on #${orderId.zeroed()}")
+        }
+        val payment = CreditPayment(orderId = orderId, amount = amount)
+        insertPayment(payment)
+    }
+
+    @Query("""UPDATE orders SET progress = "DELETED" WHERE id = :orderId""")
+    suspend fun delete(orderId: Long)
+
+    @Query("""UPDATE order_items SET returned = :returned WHERE id = :id""")
+    suspend fun returnOrderItem(id: Long, returned: Double)
+
+    @Query("""UPDATE orders SET progress = "RETURNED" WHERE id = :orderId""")
+    suspend fun markReturned(orderId: Long)
+
+    @Transaction
+    suspend fun returnItems(items: List<OrderItemEntity>) {
+        val orderIds = mutableSetOf<Long>()
+        for (item in items) {
+            returnOrderItem(item.id, item.returned)
+            orderIds.add(item.orderId)
+        }
+        orderIds.forEach { markReturned(it) }
+    }
+}
+
+@Dao
+interface OrderItemDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(orderItemEntity: OrderItemEntity) : Long
+}
+
+@Dao
+interface ClientDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(client: ClientEntity): Long
+
+    @Update
+    suspend fun update(client: ClientEntity)
+
+    @Delete
+    suspend fun delete(client: ClientEntity)
+
+    @Query("SELECT * FROM clients WHERE storeId = :storeId")
+    fun getClients(storeId: Long): Flow<List<ClientEntity>>
+
+    @Query("SELECT * FROM clients WHERE id = :id LIMIT 1")
+    fun getClientById(id: Long): Flow<ClientEntity?>
+}
+
+@Dao
+interface StaffDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(staff: StaffEntity): Long
+
+    @Update
+    suspend fun update(staff: StaffEntity)
+
+    @Delete
+    suspend fun delete(staff: StaffEntity)
+
+    @Query("SELECT * FROM staffs WHERE storeId = :storeId")
+    fun getStaffs(storeId: Long): Flow<List<StaffEntity>>
+
+    @Query("SELECT * FROM staffs WHERE id = :staffId LIMIT 1")
+    fun getStaffById(staffId: Long): Flow<StaffEntity>
+}
+
+@Dao
+interface CreditPaymentDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(creditPayment: CreditPayment): Long
+
+    @Query("SELECT * FROM credit_payments WHERE orderId = :orderId")
+    fun getCreditPayments(orderId: Long): Flow<List<CreditPayment>>
+}
+

@@ -16,19 +16,27 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme.colorScheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
@@ -38,11 +46,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.example.doline.R
-import com.example.doline.data.CartItemEntity
+import com.example.doline.data.CartItem
+import com.example.doline.data.ClientEntity
 import com.example.doline.data.Currency
+import com.example.doline.data.OrderProgress
 import com.example.doline.data.Pricing
 import com.example.doline.data.PricingDetails
 import com.example.doline.ui.theme.IconSize
@@ -50,20 +63,31 @@ import com.example.doline.ui.theme.Spacing
 
 @Composable
 fun ShoppingCart(
-    onCompleteSale: () -> Unit = {},
-    onClose: ()-> Unit,
-    onCartItemChanged: (CartItemEntity, index: Int) -> Unit,
-    onDelete: (item: CartItemEntity) -> Unit = {},
+    onCompleteSale: (progress: OrderProgress) -> Unit = {},
+    onClose: () -> Unit,
+    onCartItemChanged: (CartItem, Int) -> Unit,
+    onDelete: (CartItem) -> Unit = {},
     onClear: () -> Unit = {},
-    items: List<CartItemEntity>,
-    deviceSize: DeviceSize = DeviceSize.MOBILE
+    items: List<CartItem>,
+    deviceSize: DeviceSize = DeviceSize.MOBILE,
+    onReceivedAmountChanged: (Double?) -> Unit,
+    receivedAmount: Double? = null,
+    error: String? = null,
+    onAddClient: (ClientEntity?) -> Unit,
+    clients: List<ClientEntity>,
+    storeId: Long?,
+    client: ClientEntity? = null
 ){
+    storeId ?: return // Return nothing if the storeId is null.
+
     var cartTotal by remember { mutableDoubleStateOf(0.0) }
-    var amountReceived by remember { mutableStateOf<Double?>(null) }
     var change by remember { mutableDoubleStateOf(0.0) }
+    var expanded by remember {
+        mutableStateOf(false)
+    }
 
     LaunchedEffect(items) {
-        cartTotal = items.sumOf { i -> ((i.qty ?: 0.0) * (i.pricing.amount ?: 0.0)) }
+        cartTotal = items.sumOf { i -> (i.cartItem.qty * i.pricing.amount) }
     }
 
     Column(
@@ -90,11 +114,80 @@ fun ShoppingCart(
                 }
             }
             AppText(
-                text= "Shopping Cart",
-                variant = TextType.Heading
+                text= client?.name ?: "Shopping cart",
+                variant = TextType.Heading,
+                maxLines = 1
             )
             Spacer(Modifier.weight(1f))
-            ClearCartDialog { onClear() }
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl){
+                IconButton(onClick = {expanded = true}) {
+                    Icon(
+                        painter = painterResource(R.drawable.more),
+                        contentDescription = "Cart Actions",
+                        modifier = Modifier.size(IconSize.BIG)
+                    )
+                }
+                DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                    modifier = Modifier.background(colorScheme.surface)
+                ) {
+                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr){
+                        Spacer(Modifier.height(20.dp))
+                        AppText("Cart Actions", variant = TextType.Label, modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp))
+                        Spacer(Modifier.height(10.dp))
+                        HorizontalDivider()
+                        Spacer(Modifier.height(10.dp))
+                        if (client != null){
+                            DropdownMenuItem(
+                                text = {
+                                    TextButton(
+                                        onClick = {
+                                            onAddClient(null)
+                                            expanded = false
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = colorScheme.background
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 18.dp),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Icon(painter = painterResource(R.drawable.user_minus), tint = colorScheme.onBackground, contentDescription = null)
+                                        Spacer(Modifier.width(10.dp))
+                                        AppText("Remove Client", color = colorScheme.onBackground)
+                                    }
+                                },
+                                onClick = {}
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = {
+                                AddClientForm(
+                                    onClose = {expanded = false},
+                                    onNewClient = onAddClient,
+                                    storeId = storeId,
+                                    clients = clients,
+                                    title = if (client == null) "Add Client" else "Change Client"
+                                )
+                            },
+                            onClick = {}
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                ClearCartDialog {
+                                    expanded = false
+                                    onClear()
+                                }
+                            },
+                            onClick = {}
+                        )
+
+                    }
+                }
+            }
+
         }
         HorizontalDivider()
         Column(
@@ -105,6 +198,9 @@ fun ShoppingCart(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(Spacing.SM)
         ) {
+            if (!error.isNullOrBlank()){
+                AppText(error, color = colorScheme.error, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            }
             items.forEachIndexed { index, item ->
                 CartItem(
                     { n ->
@@ -142,9 +238,9 @@ fun ShoppingCart(
                 .padding(Spacing.MD)) {
                 PriceInputField(
                     currency = Currency.UGX,
-                    amount = amountReceived,
+                    amount = receivedAmount,
                     onChange = { am ->
-                        amountReceived = am
+                        onReceivedAmountChanged(am)
                         change = am?.minus(cartTotal) ?: 0.0
                     },
                     label = "",
@@ -171,13 +267,21 @@ fun ShoppingCart(
                     .padding(Spacing.MD), horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 TextButton(
-                    {
-                        // Complete sale
-                        onCompleteSale()
-                        // Clear cart
-                        onClear()
-                        // Close cart
-                        onClose()
+                    onClick = {
+                        onCompleteSale(OrderProgress.DRAFT)
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colorScheme.secondary
+                    ),
+                    contentPadding = PaddingValues(horizontal = 18.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    AppText("Save as draft", color = colorScheme.onSecondary)
+                }
+                Spacer(Modifier.width(10.dp))
+                TextButton(
+                    onClick = {
+                        onCompleteSale(OrderProgress.COMPLETED)
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = colorScheme.primary
@@ -193,7 +297,7 @@ fun ShoppingCart(
 }
 
 @Composable
-fun CartItem(onChange: (CartItemEntity) -> Unit = {}, onDelete: () -> Unit, cartItemDraft: CartItemEntity){
+fun CartItem(onChange: (CartItem) -> Unit = {}, onDelete: () -> Unit, cartItemDraft: CartItem){
     val qtyUnits = when(val d = cartItemDraft.pricing.details){
         is PricingDetails.UnitPrice -> {
             "${d.units ?: "Unit"}s"
@@ -206,7 +310,7 @@ fun CartItem(onChange: (CartItemEntity) -> Unit = {}, onDelete: () -> Unit, cart
         }
     }
     val p = cartItemDraft.pricing
-    val qty = cartItemDraft.qty
+    val qty = cartItemDraft.cartItem.qty
 
     Column(
         Modifier
@@ -215,7 +319,7 @@ fun CartItem(onChange: (CartItemEntity) -> Unit = {}, onDelete: () -> Unit, cart
     ) {
         AppText(cartItemDraft.item.name, variant = TextType.Label)
         FlowRow(Modifier.fillMaxWidth()) {
-            cartItemDraft.specs?.forEach { pair->
+            cartItemDraft.cartItem.specs?.forEach { pair->
                 Row(Modifier.wrapContentSize()) {
                     AppText(" | ")
                     AppText(pair.key)
@@ -242,7 +346,7 @@ fun CartItem(onChange: (CartItemEntity) -> Unit = {}, onDelete: () -> Unit, cart
                 IconButton(
                     onClick = {
                         val newQty = (qty - 1).coerceAtLeast(0.0)
-                        val nci = cartItemDraft.copy(qty = newQty)
+                        val nci = cartItemDraft.copy(cartItem = cartItemDraft.cartItem.copy(qty = newQty))
                         onChange(nci)
                     },
                 ) {
@@ -254,7 +358,7 @@ fun CartItem(onChange: (CartItemEntity) -> Unit = {}, onDelete: () -> Unit, cart
                     )
                 }
                 AppText(
-                    "${cartItemDraft.qty} $qtyUnits",
+                    "${cartItemDraft.cartItem.qty} $qtyUnits",
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
                         .background(colorScheme.onBackground.copy(.1f))
@@ -262,8 +366,8 @@ fun CartItem(onChange: (CartItemEntity) -> Unit = {}, onDelete: () -> Unit, cart
                 )
                 IconButton(
                     onClick = {
-                        val newQty = ( qty + 1).coerceAtMost(cartItemDraft.maxQty)
-                        val nci = cartItemDraft.copy(qty = newQty)
+                        val newQty = ( qty + 1).coerceAtMost(cartItemDraft.cartItem.maxQty)
+                        val nci = cartItemDraft.copy(cartItem = cartItemDraft.cartItem.copy(qty = newQty))
                         onChange(nci)
                     }
                 ) {
@@ -303,11 +407,14 @@ fun ClearCartDialog(action: () -> Unit){
             openClearCartDialog = true
         },
         colors = ButtonDefaults.buttonColors(
-            containerColor = colorScheme.inverseSurface
+            containerColor = colorScheme.errorContainer
         ),
-        contentPadding = PaddingValues(horizontal = 18.dp)
+        contentPadding = PaddingValues(horizontal = 18.dp),
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        AppText("Clear cart", color = colorScheme.surface)
+        Icon(painter = painterResource(R.drawable.trash), tint = colorScheme.error, contentDescription = null)
+        Spacer(Modifier.width(10.dp))
+        AppText("Clear cart", color = colorScheme.error)
     }
     if (openClearCartDialog) {
         AlertDialog(
@@ -326,7 +433,7 @@ fun ClearCartDialog(action: () -> Unit){
                         openClearCartDialog = false
                     }
                 ) {
-                    AppText(text = "Clear Cart", color = colorScheme.primary)
+                    AppText(text = "Clear cart", color = colorScheme.primary)
                 }
             },
             dismissButton = {
@@ -341,7 +448,7 @@ fun ClearCartDialog(action: () -> Unit){
 }
 
 @Composable
-fun DeleteCartItemDialog(action: () -> Unit, item: CartItemEntity){
+fun DeleteCartItemDialog(action: () -> Unit, item: CartItem){
     var openDeleteCartItemDialog by remember { mutableStateOf(false) }
     IconButton(
         onClick = {openDeleteCartItemDialog = true },
@@ -384,6 +491,160 @@ fun DeleteCartItemDialog(action: () -> Unit, item: CartItemEntity){
                 }
             }
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddClientForm(
+    onClose: () -> Unit,
+    onNewClient: (client: ClientEntity) -> Unit,
+    clients: List<ClientEntity> = emptyList(),
+    storeId: Long,
+    title: String = "Add Client"
+){
+    var open by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState()
+    TextButton(
+        onClick = {
+            open = true
+        },
+        colors = ButtonDefaults.buttonColors(
+            containerColor = colorScheme.background
+        ),
+        contentPadding = PaddingValues(horizontal = 18.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Icon(painter = painterResource(R.drawable.user_add), tint = colorScheme.onBackground, contentDescription = null)
+        Spacer(Modifier.width(10.dp))
+        AppText(title, color = colorScheme.onBackground)
+    }
+
+    var isNew by remember { mutableStateOf(clients.isEmpty()) }
+
+    if (open){
+        ModalBottomSheet(
+            onDismissRequest = { open = false },
+            sheetState = sheetState,
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(Spacing.MD, 0.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AppText("Add Client", variant = TextType.Heading)
+                IconButton(
+                    onClick = {isNew = !isNew},
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = colorScheme.primaryContainer,
+                        contentColor = colorScheme.primary
+                    )
+                ){
+                    Icon(
+                        painter = painterResource(if (!isNew) R.drawable.plus else R.drawable.x),
+                        contentDescription = null,
+                        modifier = Modifier.size(IconSize.NORMAL)
+                    )
+                }
+            }
+            LazyColumn(
+                Modifier.fillMaxWidth().padding(Spacing.MD),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if(isNew){
+                    item {
+                        NewClientForm(
+                            onNewClient = {
+                                onNewClient(it)
+                                onClose()
+                            },
+                            storeId = storeId
+                        )
+                    }
+                }else{
+                    if (clients.isEmpty()){
+                        item {
+                            AppText("Now saved clients!")
+                            Spacer(Modifier.height(10.dp))
+                            TextButton({
+                                isNew = true
+                            }) {
+                                AppText("Create new client", color = colorScheme.primary)
+                            }
+                        }
+                    }else{
+                        clients.forEach { c ->
+                            item {
+                                TextButton(
+                                    {
+                                        onNewClient(c)
+                                        onClose()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = colorScheme.surface
+                                    )
+                                ) {
+                                    Column(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        AppText(c.name, maxLines = 1)
+                                        AppText("${c.address} - ${c.phone}", maxLines = 1, variant = TextType.Small, color = colorScheme.onBackground.copy(.6f))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun NewClientForm(onNewClient: (client: ClientEntity) -> Unit, storeId: Long){
+    var client by remember { mutableStateOf(ClientEntity(name = "", address = "", phone = "", storeId = storeId)) }
+    var nameError by remember { mutableStateOf("") }
+    Column(Modifier.padding(Spacing.MD)) {
+        TextInputField(
+            value = client.name,
+            onValueChange = {
+                client =  client.copy(name = it)
+                nameError = ""
+            },
+            isError = nameError.isNotBlank(),
+            errorMessage = nameError,
+            label = "Name"
+        )
+        Spacer(Modifier.height(10.dp))
+        TextInputField(
+            value = client.phone ?: "",
+            onValueChange = { client =  client.copy(phone = it) },
+            label = "Phone"
+        )
+        Spacer(Modifier.height(10.dp))
+        TextInputField(
+            value = client.address ?: "",
+            onValueChange = { client =  client.copy(address = it)},
+            label = "Address"
+        )
+        Spacer(Modifier.height(Spacing.MD))
+        TextButton(
+            onClick = {
+                if (client.name.isBlank()){
+                    nameError = "The client name is required"
+                    return@TextButton
+                }
+                onNewClient(client)
+            },
+            colors = ButtonDefaults.buttonColors(
+                containerColor = colorScheme.primary
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            AppText("Save Client", color = colorScheme.onPrimary)
+        }
     }
 }
 

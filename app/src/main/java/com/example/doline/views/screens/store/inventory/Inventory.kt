@@ -108,7 +108,7 @@ fun Inventory(navController: NavController, viewModel: InventoryViewModel){
                     subtitleContentColor = colorScheme.onBackground,
                 ),
                 actions = {
-                    IconButton(onClick = {navController.navigate("stock/search")}) {
+                    IconButton(onClick = {}) {
                         Icon(
                             painter = painterResource(R.drawable.search),
                             contentDescription = "Search",
@@ -189,7 +189,7 @@ fun Inventory(navController: NavController, viewModel: InventoryViewModel){
 @Composable
 fun InventoryItemCard( onClick: () -> Unit, record: ItemWithBatches) {
     val rect = MaterialTheme.shapes.medium
-    val qty = record.batches.sumOf { it.batch.quantity }
+    val qty = record.batches.sumOf { it.batch.available }
     val image = record.item.images?.find { it.sortOrder == 0 }
     val pricings = setOf(record.batches.flatMap { it.pricings }).toList().flatten()
     Row(

@@ -88,6 +88,12 @@ data class PriceRangeDraft(
     val qty: Double? = null
 )
 
+data class ClientDraft(
+    val name: String = "",
+    val address: String = "",
+    val phone: String = ""
+)
+
 enum class Periods{
     HOUR, DAY, WEEK, MONTH, QUARTER, YEAR
 }

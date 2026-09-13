@@ -71,6 +71,10 @@ import com.example.doline.views.screens.store.home.settings.ShippingSettingsScre
 import com.example.doline.views.screens.store.home.settings.StaffSettingsScreen
 import com.example.doline.views.screens.store.home.settings.TaxationSettingsScreen
 import com.example.doline.views.screens.store.home.settings.ScreenViewModel
+import com.example.doline.views.screens.store.orders.OrderScreen
+import com.example.doline.views.screens.store.orders.OrderScreenViewModel
+import com.example.doline.views.screens.store.orders.OrdersScreen
+import com.example.doline.views.screens.store.orders.OrdersScreenViewModel
 import com.example.doline.views.screens.store.pos.PosScreen
 import com.example.doline.views.screens.store.pos.PosScreenViewModel
 
@@ -335,8 +339,25 @@ fun StoreMain(storeId: Long?){
             }
 
             // Orders destinations
-            composable("{storeId}/orders") { OrdersScreen(navController = storeNavController) }
-            composable("{storeId}/orders/item") { OrdersScreen(navController = storeNavController) }
+            composable(
+                route = "{storeId}/orders",
+                arguments = listOf(
+                    navArgument("storeId"){ type = NavType.LongType}
+                )
+            ) { b ->
+                val viewModel = androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel<OrdersScreenViewModel>(b)
+                OrdersScreen(navController = storeNavController, viewModel)
+            }
+            composable(
+                route = "{storeId}/orders/{orderId}",
+                arguments = listOf(
+                    navArgument("storeId"){ type = NavType.LongType},
+                    navArgument("orderId"){ type = NavType.LongType}
+                )
+            ) { b ->
+                val viewModel = androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel<OrderScreenViewModel>(b)
+                OrderScreen(navController = storeNavController, viewModel)
+            }
 
             // Ai assistant (Asubo)
             composable("{storeId}/lilli") { LilliScreen() }

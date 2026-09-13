@@ -59,7 +59,7 @@ fun CreateStaffScreen(navController: NavController){
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { AppText("Add new Staff", variant = TextType.Heading, maxLines = 1) },
+                title = { AppText("Add new StaffEntity", variant = TextType.Heading, maxLines = 1) },
                 colors = TopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     scrolledContainerColor = MaterialTheme.colorScheme.background,
@@ -106,26 +106,26 @@ fun CreateStaffScreen(navController: NavController){
                     value = fullNames,
                     onValueChange = { fullNames = it },
                     label = "Full names",
-                    placeHolder = "Staff's full names",
+                    placeHolder = "StaffEntity's full names",
                 )
                 TextInputField(
                     value = username,
                     onValueChange = { username = it },
                     label = "Username",
-                    placeHolder = "Staff's full username",
+                    placeHolder = "StaffEntity's full username",
                 )
                 TextInputField(
                     value = role,
                     onValueChange = { role = it },
                     label = "Role",
-                    placeHolder = "Staff's role",
+                    placeHolder = "StaffEntity's role",
                 )
                 TextInputField(
                     value = passKey,
                     onValueChange = { passKey = it },
                     label = "Pass key",
                     isPassword = true,
-                    placeHolder = "Staff's pass key",
+                    placeHolder = "StaffEntity's pass key",
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Number
                     ),

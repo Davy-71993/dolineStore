@@ -94,9 +94,9 @@ val settings = listOf(
         route = "taxation"
     ),
     SettingType(
-        "Staff & Security",
+        "StaffEntity & Security",
         R.drawable.lock,
-        description = "Staff access and security settings",
+        description = "StaffEntity access and security settings",
         route = "staff_&_security"
     ),
     SettingType(

@@ -146,6 +146,36 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideOrderDao(database: DolineStoreDatabase): OrderDao {
+        return  database.orderDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideOrderItemDao(database: DolineStoreDatabase): OrderItemDao {
+        return  database.orderItemDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideClientDao(database: DolineStoreDatabase): ClientDao {
+        return  database.clientDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideStaffDao(database: DolineStoreDatabase): StaffDao {
+        return  database.staffDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideCreditBalanceDao(database: DolineStoreDatabase): CreditPaymentDao {
+        return  database.creditPaymentDao()
+    }
+
+    @Provides
+    @Singleton
     fun provideUserProfileRepository(dao: UserProfileDao, supabaseClient: SupabaseClient) = UserProfileRepository(dao, supabaseClient)
 
     @Provides
@@ -179,4 +209,24 @@ object AppModule {
     @Provides
     @Singleton
     fun provideCartItemRepository(dao: CartItemDao) = CartItemRepository(dao)
+
+    @Provides
+    @Singleton
+    fun provideOrderRepository(dao: OrderDao) = OrderRepository(dao)
+
+    @Provides
+    @Singleton
+    fun provideOrderItemRepository(dao: OrderItemDao) = OrderItemRepository(dao)
+
+    @Provides
+    @Singleton
+    fun provideClientRepository(dao: ClientDao) = ClientRepository(dao)
+
+    @Provides
+    @Singleton
+    fun provideStaffRepository(dao: StaffDao) = StaffRepository(dao)
+
+    @Provides
+    @Singleton
+    fun provideCreditBalanceRepository(dao: CreditPaymentDao) = CreditPaymentRepository(dao)
 }

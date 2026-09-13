@@ -36,10 +36,10 @@ fun FixedPriceAddToCartForm(
     record: ItemWithBatches,
     cartItem: CartItemDraft
 ){
-    val batches = record.batches
+    val batches = record.batches.filter { b -> b.batch.available != 0.0 }
     val currentBatch = batches.find { b -> b.batch.createdAt == batches.maxOf { r -> r.batch.createdAt } }
     val pricing = currentBatch?.pricings?.firstOrNull()
-    val totalAvailable = batches.sumOf { b-> b.batch.quantity }
+    val totalAvailable = batches.sumOf { b-> b.batch.available }
     if (pricing == null){
         AppText("No active pricing for this item", color = colorScheme.error)
         return
@@ -47,15 +47,15 @@ fun FixedPriceAddToCartForm(
 
     PriceTag(pricing)
     NumberInputField(
-        { n ->
+        onChange = { n ->
             if(n != null && n.toDouble() <= totalAvailable){
                 val qty = n.toDouble()
                 val updatedCartItemDraft = cartItem.copy(qty = qty)
                 onChange(updatedCartItemDraft)
             }
         },
-        cartItem.qty,
-        "QUANTITY",
+        number = cartItem.qty,
+        label = "QUANTITY",
         textAlign = TextAlign.Center,
         leadingIcon = {
             IconButton({
@@ -93,10 +93,10 @@ fun UnitPriceAddToCartForm(
     record: ItemWithBatches,
     cartItem: CartItemDraft
 ){
-    val batches = record.batches.filter { rb -> rb.pricings.isNotEmpty() && rb.batch.quantity > 0 }
+    val batches = record.batches.filter { rb -> rb.pricings.isNotEmpty() && rb.batch.quantity != 0.0 }
     val currentBatch = batches.find { b -> b.batch.createdAt == batches.maxOf { r -> r.batch.createdAt } }
     val pricings = currentBatch?.pricings ?: emptyList()
-    var totalQty by remember { mutableDoubleStateOf(batches.sumOf { b-> b.batch.quantity }) }
+    var totalQty by remember { mutableDoubleStateOf(batches.sumOf { b-> b.batch.available }) }
 
 
     FlowRow(
@@ -126,13 +126,13 @@ fun UnitPriceAddToCartForm(
 
     Spacer(Modifier.height(Spacing.MD))
     NumberInputField(
-            { n ->
+            onChange = { n ->
                 val qty = n?.toDouble()
                 val updatedCartItemDraft = cartItem.copy(qty = qty)
                 onChange(updatedCartItemDraft)
             },
-            cartItem.qty,
-            "QUANTITY",
+            number = cartItem.qty,
+            label = "QUANTITY",
             textAlign = TextAlign.Center,
             leadingIcon = {
                 IconButton({
@@ -171,7 +171,7 @@ fun PriceRangeAddToCartForm(
     record: ItemWithBatches,
     cartItem: CartItemDraft
 ){
-    val batches = record.batches.filter { rb -> rb.pricings.isNotEmpty() && rb.batch.quantity > 0 }
+    val batches = record.batches.filter { rb -> rb.pricings.isNotEmpty() && rb.batch.available != 0.0 }
     val currentBatch = batches.find { b -> b.batch.createdAt == batches.maxOf { r -> r.batch.createdAt } }
     val pricings = currentBatch?.pricings ?: emptyList()
 
@@ -201,13 +201,13 @@ fun PriceRangeAddToCartForm(
 
     Spacer(Modifier.height(Spacing.MD))
     NumberInputField(
-        { n ->
+        onChange = { n ->
             val qty = n?.toDouble()
             val updatedCartItemDraft = cartItem.copy(qty = qty)
             onChange(updatedCartItemDraft)
         },
-        cartItem.qty,
-        "QUANTITY",
+        number = cartItem.qty,
+        label = "QUANTITY",
         textAlign = TextAlign.Center,
         leadingIcon = {
             IconButton({
@@ -250,7 +250,6 @@ fun RecurringAddToCartForm(
     val currentBatch = batches.find { b -> b.batch.createdAt == batches.maxOf { r -> r.batch.createdAt } }
     val pricings = currentBatch?.pricings ?: emptyList()
 
-
     FlowRow(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(Spacing.XS),
@@ -275,13 +274,13 @@ fun RecurringAddToCartForm(
 
     Spacer(Modifier.height(Spacing.MD))
     NumberInputField(
-        { n ->
+        onChange = { n ->
             val qty = n?.toDouble()
             val updatedCartItemDraft = cartItem.copy(qty = qty)
             onChange(updatedCartItemDraft)
         },
-        cartItem.qty,
-        "${(cartItem.pricing?.details as PricingDetails.RecurringPrice?)?.period ?: "PERIOD"}S",
+        number = cartItem.qty,
+        label = "${(cartItem.pricing?.details as PricingDetails.RecurringPrice?)?.period ?: "PERIOD"}S",
         textAlign = TextAlign.Center,
         leadingIcon = {
             IconButton({

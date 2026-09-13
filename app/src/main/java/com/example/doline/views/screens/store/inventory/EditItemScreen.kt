@@ -72,11 +72,13 @@ import com.example.doline.ui.theme.Spacing
 import com.example.doline.views.components.AppButton
 import com.example.doline.views.components.AppText
 import com.example.doline.views.components.ButtonType
+import com.example.doline.views.components.CameraScannerOverlay
 import com.example.doline.views.components.ErrorMessage
 import com.example.doline.views.components.FormScreen
 import com.example.doline.views.components.GhostInputField
 import com.example.doline.views.components.ImageView
 import com.example.doline.views.components.LoadingScreen
+import com.example.doline.views.components.ScannerBtn
 import com.example.doline.views.components.SelectField
 import com.example.doline.views.components.TextInputField
 import com.example.doline.views.components.TextType
@@ -97,6 +99,8 @@ fun ItemForm(navController: NavController, viewModel: EditItemScreenViewModel ){
     val item by viewModel.item.collectAsState()
     val error by viewModel.error.collectAsState()
     val loading by viewModel.loading.collectAsState()
+    val openScanner by viewModel.openCamera.collectAsState()
+    val isScanning by viewModel.isScanning.collectAsState()
     val itemId = viewModel.itemId
 
     val context = LocalContext.current
@@ -170,7 +174,6 @@ fun ItemForm(navController: NavController, viewModel: EditItemScreenViewModel ){
             }
         )
     }) {
-
         when(val state = uiState){
             is EditScreenUiState.Loading -> {
                 LoadingScreen()
@@ -179,6 +182,13 @@ fun ItemForm(navController: NavController, viewModel: EditItemScreenViewModel ){
                 ErrorMessage(state.message)
             }
             is EditScreenUiState.Idle -> {
+                if(openScanner){
+                    CameraScannerOverlay(
+                        isScanning,
+                        { viewModel.onUpcScanned(it)},
+                        {viewModel.closeCamera()}
+                    )
+                }
                 TextInputField(
                     item.upc ?: "",
                     {
@@ -187,7 +197,15 @@ fun ItemForm(navController: NavController, viewModel: EditItemScreenViewModel ){
                     },
                     label = "UPC",
                     placeHolder = "Universal Product Code",
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    trailingIcon = {
+                        ScannerBtn(
+                            {
+                                viewModel.openCamera()
+                            },
+                            modifier = Modifier.size(30.dp).padding(0.dp),
+                        )
+                    }
                 )
 
                 TextInputField(
@@ -502,12 +520,29 @@ class EditItemScreenViewModel @Inject constructor(
     private val _item = MutableStateFlow(ItemEntity(0, storeId ?: 0 , "", categorySlug = "", pricingScheme = PricingScheme.UNIT))
     private val _loading = MutableStateFlow(false)
     private val _error = MutableStateFlow<FieldsError?>(null)
+    private val _openCamera = MutableStateFlow(false)
+    private  val _isScanning = MutableStateFlow(false)
 
     val uiState: StateFlow<EditScreenUiState> = _uiState
     val item: StateFlow<ItemEntity> = _item
     val loading: StateFlow<Boolean> = _loading
     val error: StateFlow<FieldsError?> = _error
+    val openCamera: StateFlow<Boolean> = _openCamera
+    val isScanning: StateFlow<Boolean> = _isScanning
 
+    fun onUpcScanned(upc: String) {
+        val itm = _item.value.copy(upc = upc)
+        onEdit(itm)
+        closeCamera()
+    }
+    fun openCamera(){
+        _openCamera.value = true
+        _isScanning.value = false
+    }
+    fun closeCamera(){
+        _openCamera.value = false
+        _isScanning.value = true
+    }
     private suspend fun getItem(){
         if (itemId == null){
             _uiState.emit(EditScreenUiState.Idle)

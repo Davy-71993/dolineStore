@@ -67,7 +67,7 @@ fun StaffSettingsScreen(navController: NavController){
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { AppText("Staff & Access", variant = TextType.Heading, maxLines = 1) },
+                title = { AppText("StaffEntity & Access", variant = TextType.Heading, maxLines = 1) },
                 colors = TopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     scrolledContainerColor = MaterialTheme.colorScheme.background,
@@ -154,7 +154,7 @@ fun StaffSettingsScreen(navController: NavController){
                     }
                     item {
                         Spacer(Modifier.height(20.dp))
-                        AppText("Staff members", variant = TextType.Label)
+                        AppText("StaffEntity members", variant = TextType.Label)
                     }
                     if(staffs.isEmpty()){
                         item {

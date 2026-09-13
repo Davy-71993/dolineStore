@@ -1,5 +1,6 @@
 package com.example.doline.views.components
 
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -7,9 +8,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
 import com.example.doline.formatWithCommas
 import com.example.doline.ui.theme.FontSize
 import com.example.doline.views.screens.store.home.Message
@@ -17,6 +20,7 @@ import com.example.doline.views.screens.store.home.Message
 @Composable
 fun NumberInputField(
     onChange: (input: Number?) -> Unit,
+    modifier: Modifier = Modifier,
     number: Number? = null,
     label: String = "",
     placeholder: String = "",
@@ -26,7 +30,8 @@ fun NumberInputField(
     textAlign: TextAlign = TextAlign.Start,
     fontSize: TextUnit = FontSize.MD,
     isError: Boolean = false,
-    errorMessage: String? = null
+    errorMessage: String? = null,
+    contentPadding: PaddingValues = PaddingValues(16.dp, 8.dp)
 ){
     // Local string state to handle raw user input smoothly (e.g., handling trailing decimals)
     var textState by remember { mutableStateOf(number?.toString() ?: "") }
@@ -71,7 +76,9 @@ fun NumberInputField(
         fontSize = fontSize,
         action = action,
         isError = isError,
-        errorMessage = errorMessage
+        errorMessage = errorMessage,
+        modifier = modifier,
+        contentPadding = contentPadding
     )
 }
 

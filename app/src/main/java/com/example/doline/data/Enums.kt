@@ -27,3 +27,11 @@ enum class StoreCategory {
         fun getStoreCategories(): List<StoreCategory> = enums.toList()
     }
 }
+
+enum class OrderProgress {
+    PENDING, READY, SHIPPING, COMPLETED, RETURNED, DRAFT, CANCELLED, DELETED
+}
+
+enum class OrderStatus {
+    PAID, CREDIT, DRAFT
+}

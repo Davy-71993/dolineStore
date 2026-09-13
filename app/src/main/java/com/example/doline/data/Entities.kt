@@ -258,12 +258,139 @@ data class NotesEntity(
 @Entity("cart_items")
 data class CartItemEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val item: ItemEntity,
+    val itemId: Long,
+    @param:TypeConverters(CartItemConverters::class)
     val batchesDetails: Map<String, Double> = emptyMap(),
     val qty: Double,
-    val pricing: Pricing,
+    val pricingId: Long,
+    @param:TypeConverters(CartItemConverters::class)
     val specs: Map<String, Any>? = null,
     val maxQty: Double = 0.0
 )
+
+data class CartItem(
+    @Embedded
+    val cartItem: CartItemEntity,
+
+    @Relation(
+        parentColumn = "itemId",
+        entityColumn = "id"
+    )
+    val item: ItemEntity,
+
+    @Relation(
+        parentColumn = "pricingId",
+        entityColumn = "id"
+    )
+    val pricing: Pricing,
+
+)
+
+@Entity("orders")
+data class OrderEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val storeId: Long,
+    val progress: OrderProgress = OrderProgress.PENDING,
+    val status: OrderStatus,
+    val amountReceived: Double? = null,
+    val creditBalance: Double? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+    val clientId: Long? = null,
+    val staffId: Long? = null,
+)
+
+@Entity("order_items")
+data class OrderItemEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val orderId: Long,
+    val itemId: Long,
+    @param:TypeConverters(CartItemConverters::class)
+    val batchesDetails: Map<String, Double> = emptyMap(),
+    val qty: Double,
+    val returned: Double = 0.0,
+    val pricingId: Long,
+    @param:TypeConverters(CartItemConverters::class)
+    val specs: Map<String, Any>? = null,
+)
+
+data class Order(
+    @Embedded
+    val fields: OrderEntity,
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "orderId",
+        entity = CreditPayment::class
+    )
+    val creditPayments: List<CreditPayment>,
+
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "orderId",
+        entity = OrderItemEntity::class
+    )
+    val items: List<OrderItem>,
+
+    @Relation(
+        parentColumn = "clientId",
+        entityColumn = "id",
+        entity = ClientEntity::class
+    )
+    val client: ClientEntity?,
+
+    @Relation(
+        parentColumn = "staffId",
+        entityColumn = "id",
+        entity = StaffEntity::class
+    )
+    val staff: StaffEntity?,
+)
+
+data class OrderItem(
+    @Embedded
+    val fields: OrderItemEntity,
+    @Relation(
+        parentColumn = "itemId",
+        entityColumn = "id",
+        entity = ItemEntity::class
+    )
+    val item: ItemEntity,
+    @Relation(
+        parentColumn = "pricingId",
+        entityColumn = "id",
+        entity = Pricing::class
+    )
+    val pricing: Pricing
+)
+
+@Entity("clients")
+data class ClientEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val storeId: Long,
+    val name: String,
+    val address: String?,
+    val phone: String?,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity("staffs")
+data class StaffEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val storeId: Long,
+    val name: String,
+    val role: String?,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity("credit_payments")
+data class CreditPayment(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val orderId: Long,
+    val amount: Double,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+
+
 
 

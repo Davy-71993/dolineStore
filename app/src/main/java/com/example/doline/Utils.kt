@@ -1,13 +1,11 @@
 package com.example.doline
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
-import androidx.compose.runtime.remember
-import androidx.compose.ui.graphics.painter.Painter
 import androidx.window.core.layout.WindowSizeClass
 import com.example.doline.data.BatchEntity
 import com.example.doline.views.screens.store.inventory.FieldsError
@@ -21,6 +19,36 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
+import androidx.annotation.OptIn
+import androidx.camera.core.ExperimentalGetImage
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
+import androidx.compose.material3.MaterialTheme.colorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.doline.data.Order
+import com.example.doline.data.OrderProgress
+import com.example.doline.ui.theme.amberContainer
+import com.example.doline.ui.theme.onAmberContainer
+import com.example.doline.ui.theme.onSlateContainer
+import com.example.doline.ui.theme.slateContainer
+import com.example.doline.ui.theme.successContainerLight
+import com.example.doline.ui.theme.successLight
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.common.InputImage
+import java.time.temporal.ChronoUnit
 
 fun Number.formatWithCommas(): String{
     return NumberFormat
@@ -28,8 +56,8 @@ fun Number.formatWithCommas(): String{
         .format(this)
 }
 
-fun Number.zeroed(): String{
-    return this.toLong().toString().padStart(4, '0')
+fun Number.zeroed(num: Int = 4): String{
+    return this.toLong().toString().padStart(num, '0')
 }
 
 @RequiresApi(Build.VERSION_CODES.O)
@@ -164,7 +192,7 @@ fun prepareBatchDetails(batches: List<BatchEntity>, qty: Double?, factor: Double
     // If the requested quantity is 0 or less, there's nothing to allocate
     if (qty == null || qty <= 0) return emptyMap()
 
-    val numAvailable = qty * factor
+    val numAvailable = qty / factor
     val result = mutableMapOf<String, Double>()
     var remainingQtyToCover = numAvailable
 
@@ -187,6 +215,93 @@ fun prepareBatchDetails(batches: List<BatchEntity>, qty: Double?, factor: Double
     }
     return result
 }
+
+fun Context.hasCameraPermission(): Boolean {
+    return ContextCompat.checkSelfPermission(
+        this,
+        Manifest.permission.CAMERA
+    ) == PackageManager.PERMISSION_GRANTED
+}
+
+@Composable
+fun rememberCameraPermissionState(): Boolean {
+    val context = LocalContext.current
+    var hasPermission by remember { mutableStateOf(context.hasCameraPermission()) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasPermission = context.hasCameraPermission()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    return hasPermission
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+fun groupOrdersByDate(
+    orders: List<Order>,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+    dateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault())
+): Map<String, List<Order>> {
+    val today = LocalDate.now(zoneId)
+    val sortedOrders = orders.sortedByDescending { it.fields.createdAt }
+
+    return sortedOrders.groupBy { order ->
+        val orderDate = Instant.ofEpochMilli(order.fields.createdAt)
+            .atZone(zoneId)
+            .toLocalDate()
+
+        val daysBetween = ChronoUnit.DAYS.between(orderDate, today)
+
+        when (daysBetween) {
+            0L -> "Today"
+            1L -> "Yesterday"
+            else -> orderDate.format(dateFormatter) // e.g. "Aug 15, 2026"
+        }
+    }
+}
+
+data class OrderStatusBtnColors(
+    val container: Color,
+    val text: Color
+)
+
+@Composable
+fun orderStausColors(status: OrderProgress): OrderStatusBtnColors{
+    return when(status){
+        OrderProgress.PENDING -> {
+            OrderStatusBtnColors(container = colorScheme.surfaceVariant, text = colorScheme.onSurfaceVariant)
+        }
+        OrderProgress.READY -> {
+            OrderStatusBtnColors(container = colorScheme.primaryContainer, text = colorScheme.primary)
+        }
+        OrderProgress.SHIPPING -> {
+            OrderStatusBtnColors(container = amberContainer, text = onAmberContainer)
+        }
+        OrderProgress.COMPLETED -> {
+            OrderStatusBtnColors(container = successContainerLight, text = successLight)
+        }
+        OrderProgress.RETURNED -> {
+            OrderStatusBtnColors(container = colorScheme.errorContainer, text = colorScheme.error)
+        }
+        OrderProgress.DRAFT -> {
+            OrderStatusBtnColors(container = slateContainer, text = onSlateContainer)
+        }
+        OrderProgress.CANCELLED, OrderProgress.DELETED-> {
+            OrderStatusBtnColors(container = colorScheme.errorContainer, text = colorScheme.error)
+        }
+    }
+}
+
+
 
 
 

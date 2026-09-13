@@ -20,8 +20,13 @@ import androidx.room.TypeConverters
         BatchEntity::class,
         BatchPricingCrossRef::class,
         NotesEntity::class,
-        CartItemEntity::class],
-    version = 6,
+        CartItemEntity::class,
+        OrderEntity::class,
+        OrderItemEntity::class,
+        ClientEntity::class,
+        StaffEntity::class,
+        CreditPayment::class],
+    version = 10,
     exportSchema = false
 )
 @TypeConverters(
@@ -46,6 +51,11 @@ abstract class DolineStoreDatabase: RoomDatabase() {
     abstract fun batchDao(): BatchDao
     abstract fun noteDao(): NoteDao
     abstract fun cartItemDao(): CartItemDao
+    abstract fun orderDao(): OrderDao
+    abstract  fun orderItemDao(): OrderItemDao
+    abstract fun clientDao(): ClientDao
+    abstract fun staffDao(): StaffDao
+    abstract fun creditPaymentDao(): CreditPaymentDao
 
     companion object {
         @Volatile

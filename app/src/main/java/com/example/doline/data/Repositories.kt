@@ -1,5 +1,6 @@
 package com.example.doline.data
 
+import androidx.activity.result.contract.ActivityResultContracts
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.OtpType
@@ -219,9 +220,55 @@ class NoteRepository @Inject constructor(
 class CartItemRepository @Inject constructor(
     private val dao: CartItemDao
 ){
-    fun getAllItems(): Flow<List<CartItemEntity>> = dao.getAllItems()
+    fun getAllItems(): Flow<List<CartItem>> = dao.getAllItems()
     suspend fun insert(item: CartItemEntity): Long = dao.insert(item)
     suspend fun editItem(item: CartItemEntity) = dao.editItem(item)
     suspend fun deleteItem(item: CartItemEntity) = dao.deleteItem(item)
     suspend fun clearCart() = dao.clearCart()
+}
+
+class OrderRepository @Inject constructor(
+    private val dao: OrderDao
+){
+    suspend fun insert(item: OrderEntity): Long = dao.insert(item)
+    fun getAllOrders(storeId: Long): Flow<List<Order>> = dao.getStoreOrders(storeId)
+    fun getOrderById(orderId: Long): Flow<Order> = dao.getOrderById(orderId)
+    suspend fun updateCreditBalance(amount: Double, orderId: Long) = dao.updateCreditBalance(amount, orderId)
+    suspend fun editOrder(item: OrderEntity) = dao.editOrder(item)
+    suspend fun delete(orderId: Long) = dao.delete(orderId)
+    suspend fun returnItems(items: List<OrderItemEntity>) = dao.returnItems(items)
+
+}
+
+class OrderItemRepository @Inject constructor(
+    private val dao: OrderItemDao
+){
+    suspend fun insert(item: OrderItemEntity): Long = dao.insert(item)
+}
+
+class ClientRepository @Inject constructor(
+    private val dao: ClientDao
+){
+    suspend fun insert(client: ClientEntity): Long = dao.insert(client)
+    fun getClients(storeId: Long): Flow<List<ClientEntity>> = dao.getClients(storeId)
+    fun getClientById(clientId: Long): Flow<ClientEntity?> = dao.getClientById(clientId)
+    suspend fun editClient(client: ClientEntity) = dao.update(client)
+    suspend fun deleteClient(client: ClientEntity) = dao.delete(client)
+}
+
+class StaffRepository @Inject constructor(
+    private val dao: StaffDao
+){
+    suspend fun insert(staff: StaffEntity): Long = dao.insert(staff)
+    fun getStaffs(storeId: Long): Flow<List<StaffEntity>> = dao.getStaffs(storeId)
+    fun getStaffById(staffId: Long): Flow<StaffEntity?> = dao.getStaffById(staffId)
+    suspend fun editStaff(staff: StaffEntity) = dao.update(staff)
+    suspend fun deleteStaff(staff: StaffEntity) = dao.delete(staff)
+}
+
+class CreditPaymentRepository @Inject constructor(
+    private val dao: CreditPaymentDao
+){
+    suspend fun insert(cp: CreditPayment): Long = dao.insert(cp)
+    fun getCreditPayments(orderId: Long): Flow<List<CreditPayment>> = dao.getCreditPayments(orderId)
 }

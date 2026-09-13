@@ -187,11 +187,11 @@ fun RestockScreen(navController: NavController, viewModel: RestockViewModel){
                     ) {
                         Box(Modifier.weight(1f)){
                             NumberInputField(
-                                { qty ->
+                                onChange = { qty ->
                                     val edit = batch.copy(quantity = qty?.toDouble() ?: 0.0, available = qty?.toDouble() ?: 0.0)
                                     viewModel.onBatchEdit(edit)
                                 },
-                                batch.quantity,
+                                number = batch.quantity,
                                 label = "QUANTITY",
                                 placeholder = "Enter quantity",
                                 isError = !error.qty.isNullOrEmpty(),
@@ -319,15 +319,16 @@ class RestockViewModel @Inject constructor(
     val storeId = savedState.get<Long>("storeId")
     private val _uiState = MutableStateFlow<RestockUiState>(RestockUiState.Fetching)
     val uiState: Flow<RestockUiState> = _uiState
+    private val _item = MutableStateFlow<ItemEntity?>(null)
+    val item: Flow<ItemEntity?> = _item
 
-    private val _batch = MutableStateFlow(BatchDraft(itemId = itemId?: 0,))
+    private val _batch = MutableStateFlow(BatchDraft(itemId = itemId?: 0, units = _item.value?.sku))
     val batch: StateFlow<BatchDraft> = _batch
 
     private val _pricings = MutableStateFlow<List<Pricing>>(emptyList())
     val pricings: Flow<List<Pricing>> = _pricings
 
-    private val _item = MutableStateFlow<ItemEntity?>(null)
-    val item: Flow<ItemEntity?> = _item
+
 
     private val _error = MutableStateFlow(RestockFormError())
     val error: StateFlow<RestockFormError> = _error
@@ -338,6 +339,7 @@ class RestockViewModel @Inject constructor(
     val datePickerScope: Flow<DatePickerScope?> = _datePickerScope
     private val _prevPricings = MutableStateFlow<List<Pricing>>(emptyList())
     val prevPricings: StateFlow<List<Pricing>> = _prevPricings
+    private val _inStock = MutableStateFlow(0.0)
 
     fun onBatchEdit(b: BatchDraft){
         _batch.value = b
@@ -379,6 +381,7 @@ class RestockViewModel @Inject constructor(
             val bn = batch.batchNumber
             val qty = batch.quantity
             val uts = batch.units
+            val inStock = _inStock.value
 
             if (qty == null || qty <= 0){
                 er = er.copy(qty = "The quantity is required.")
@@ -400,7 +403,7 @@ class RestockViewModel @Inject constructor(
                     batchNumber = bn ?: "1",
                     itemId = itmId,
                     quantity = qty!!,
-                    available = qty,
+                    available = if(inStock > 0) qty else inStock+qty,
                     units = uts!!,
                     expiryDate = _batch.value.expiryDate,
                     manufactureDate = _batch.value.manufactureDate
@@ -441,8 +444,9 @@ class RestockViewModel @Inject constructor(
                     .collect {
                         _item.value = it?.item
                         val b = _batch.value
-                        _batch.value = b.copy(batchNumber = ((it?.batches?.size?.plus(1)).toString()))
+                        _batch.value = b.copy(batchNumber = ((it?.batches?.size?.plus(1)).toString()), units = it?.item?.sku)
                         _uiState.value = RestockUiState.Idle
+                        _inStock.value = it?.batches?.sumOf { r -> r.batch.available } ?: 0.0
                         val prices = it?.batches?.flatMap { b ->
                             b.pricings
                         } ?: emptyList()

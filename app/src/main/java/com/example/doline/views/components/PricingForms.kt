@@ -122,8 +122,8 @@ fun PriceInputField(
     errorMessage: String? = null
 ){
     NumberInputField(
-        { onChange(it?.toDouble())  },
-        amount,
+        onChange = { onChange(it?.toDouble())  },
+        number = amount,
         label = label,
         placeholder = placeholder,
         leadingIcon = {
@@ -997,12 +997,12 @@ fun PriceRangeForm(
                     errorMessage = error.price
                 )
                 NumberInputField(
-                    { qty ->
+                    onChange = { qty ->
                         val currentDetails = details ?: PriceRangeDraft()
                         val updatedDetails = currentDetails.copy(qty = qty as Double?)
                         details = updatedDetails
                     },
-                    details?.qty,
+                    number = details?.qty,
                     label = "QUANTITY AVAILABLE",
                     placeholder = "Enter quantity",
                     isError = !error.qty.isNullOrBlank(),
