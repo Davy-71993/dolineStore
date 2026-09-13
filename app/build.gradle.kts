@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -10,9 +12,26 @@ plugins {
     kotlin("plugin.serialization") version "2.2.10"
 }
 
+// Secrets are kept out of source control: put them in the (gitignored) local.properties
+// as SUPABASE_URL / SUPABASE_ANON_KEY, or supply them as env vars of the same name for CI.
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) {
+        file.inputStream().use { load(it) }
+    }
+}
+
+fun secret(key: String): String {
+    return localProperties.getProperty(key)
+        ?: System.getenv(key)
+        ?: throw GradleException(
+            "Missing required property \"$key\". Add it to local.properties (not committed) or set it as an env var."
+        )
+}
+
 android {
     namespace = "com.example.doline"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.example.doline"
@@ -23,9 +42,9 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Env vars for supabase
-        buildConfigField("String", "SUPABASE_URL", "\"https://mqistandrulavcbncpwn.supabase.co\"")
-        buildConfigField("String", "SUPABASE_ANON_KEY", "\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1xaXN0YW5kcnVsYXZjYm5jcHduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNzQ3NzIsImV4cCI6MjA2Mzk1MDc3Mn0.LWvreB-L64WLsdOY9o0tvr8ZOXXEthCEBWpaLIqSnsk\"")
+        // Supabase config is loaded from local.properties/env vars, not hardcoded (see `secret` above).
+        buildConfigField("String", "SUPABASE_URL", "\"${secret("SUPABASE_URL")}\"")
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"${secret("SUPABASE_ANON_KEY")}\"")
     }
 
     buildTypes {
@@ -50,8 +69,12 @@ android {
 }
 
 dependencies {
-    implementation(libs.androidx.compose.runtime)
+    implementation(platform("com.google.firebase:firebase-bom:34.17.0")) // or newer
+
+    implementation("com.google.firebase:firebase-analytics")
+    implementation("com.google.firebase:firebase-crashlytics")
     implementation(libs.androidx.compose.ui.util)
+    implementation(libs.androidx.runtime)
     val roomVersion = "2.8.4"
     implementation(libs.androidx.compose.foundation.layout)
     implementation(libs.androidx.core.ktx)
@@ -67,36 +90,32 @@ dependencies {
     implementation(libs.androidx.compose.animation.core.lint)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.ui)
-    implementation(libs.transport.runtime)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
     // Dagger hilt deps
-    implementation("com.google.dagger:hilt-android:2.59.2")
-    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
+    implementation("com.google.dagger:hilt-android:2.60.1")
+    implementation("androidx.hilt:hilt-navigation-compose:1.4.0")
     "ksp"("com.google.dagger:hilt-android-compiler:2.59.2")
 
 
     // Navigation deps
-    implementation("androidx.navigation:navigation-compose:2.9.7")
-    implementation("androidx.compose.material:material-icons-core:1.7.7")
-
-    // Coil image processer deps
+    implementation("androidx.navigation:navigation-compose:2.9.8")
+    implementation("androidx.compose.material:material-icons-core:1.7.8")
 
     // Supabase deps
-    implementation(platform("io.github.jan-tennert.supabase:bom:3.5.0"))
+    implementation(platform("io.github.jan-tennert.supabase:bom:3.7.0"))
     implementation("io.github.jan-tennert.supabase:auth-kt")
     implementation("io.github.jan-tennert.supabase:postgrest-kt")
 
-    implementation("io.ktor:ktor-client-android:3.4.2")
+    implementation("io.ktor:ktor-client-android:3.5.2")
 
     // Compose charts
-    implementation ("io.github.ehsannarmani:compose-charts:0.2.5")
+    implementation ("io.github.ehsannarmani:compose-charts:1.0.0")
 
     // Room deps
     implementation("androidx.room:room-runtime:${roomVersion}")
@@ -105,30 +124,47 @@ dependencies {
     implementation("androidx.room:room-paging:${roomVersion}")
 
     // ViewModel + Lifecycle (recommended)
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.6")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.6")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
 
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.2.1")
     implementation("androidx.datastore:datastore:1.2.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 
     // Gson
     implementation("com.google.code.gson:gson:2.14.0")
 
     // Retrofit
-    implementation("com.squareup.retrofit2:retrofit:2.11.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+    implementation("com.squareup.retrofit2:retrofit:3.0.0")
+    implementation("com.squareup.retrofit2:converter-gson:3.0.0")
 
     // OkHttp Logging (very useful for debugging)
-    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:5.4.0")
 
     // Image processing
-    implementation("io.coil-kt.coil3:coil-compose:3.4.0")
-    implementation("io.coil-kt.coil3:coil-network-okhttp:3.4.0")
+    implementation("io.coil-kt.coil3:coil-compose:3.5.0")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.5.0")
 
     // Material3 Adaptive
     implementation("androidx.compose.material3.adaptive:adaptive")
     implementation("androidx.compose.material3.adaptive:adaptive-layout")
+
+    // ML Kit Barcode Scanning
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+
+    // CameraX core & lifecycle
+    val cameraxVersion = "1.6.1"
+    implementation("androidx.camera:camera-core:$cameraxVersion")
+    implementation("androidx.camera:camera-camera2:$cameraxVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
+    implementation("androidx.camera:camera-view:$cameraxVersion")
+    implementation("androidx.camera:camera-mlkit-vision:${cameraxVersion}")
+}
+
+configurations.all {
+    resolutionStrategy {
+        force("org.jetbrains.kotlin:kotlin-metadata-jvm:2.4.0")  // or 2.4.10 / match your Kotlin version
+    }
 }
 

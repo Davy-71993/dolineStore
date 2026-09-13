@@ -1,0 +1,8 @@
+# Copy this file to local.properties (gitignored) and fill in real values.
+# local.properties is per-machine and never committed.
+
+sdk.dir=/path/to/your/Android/sdk
+
+# Supabase config (see app/build.gradle.kts)
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
