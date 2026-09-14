@@ -7,9 +7,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -23,6 +26,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarColors
@@ -71,8 +75,8 @@ fun ChatScreen(navController: NavController, viewModel: ChatScreenViewModel){
     }
     val listState = rememberLazyListState()
 
-    FormScreen(
-        appBar = {
+    Scaffold (
+        topBar = {
             TopAppBar(
                 title = { AppText(chatHead.client.fullNames, variant = TextType.Heading, maxLines = 1) },
                 modifier = Modifier.padding(vertical = 0.dp),
@@ -98,20 +102,25 @@ fun ChatScreen(navController: NavController, viewModel: ChatScreenViewModel){
                 }
             )
         }
-    ) {
-        messages.forEach { m ->
-            MessageBubble(message = m)
-        }
-        ChatInput(
-            value = messageText,
-            onValueChange = { messageText = it },
-            onSend = {
-                if (messageText.isNotBlank()) {
-                    messages.add(Message(messageText, "Now", true))
-                    messageText = ""
+    ) {p ->
+        Column(Modifier.fillMaxSize().padding(p)) {
+            Column(Modifier.weight(1f).padding(horizontal = Spacing.MD)) {
+                messages.forEach { m ->
+                    MessageBubble(message = m)
                 }
             }
-        )
+            ChatInput(
+                value = messageText,
+                onValueChange = { messageText = it },
+                onSend = {
+                    if (messageText.isNotBlank()) {
+                        messages.add(Message(messageText, "Now", true))
+                        messageText = ""
+                    }
+                }
+            )
+            Spacer(Modifier.height(80.dp))
+        }
     }
 
     LaunchedEffect(messages.size) {

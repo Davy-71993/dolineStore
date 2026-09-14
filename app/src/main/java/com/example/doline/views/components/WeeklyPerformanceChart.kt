@@ -23,10 +23,7 @@ import ir.ehsannarmani.compose_charts.models.LabelProperties
 import ir.ehsannarmani.compose_charts.models.Line
 
 @Composable
-fun WeeklyPerformanceChart() {
-    val days = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-    val amounts = listOf(120.0, 150.0, 180.0, 140.0, 200.0, 250.0, 220.0)
-
+fun WeeklyPerformanceChart(labels: List<String>, amounts: List<Double>) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -34,7 +31,7 @@ fun WeeklyPerformanceChart() {
     ){
         LineChart(
             modifier = Modifier.fillMaxSize(),
-            data = remember {
+            data = remember(labels, amounts) {
                 listOf(
                     Line(
                         label = "Sales",
@@ -65,11 +62,10 @@ fun WeeklyPerformanceChart() {
                 ),
             ),
             indicatorProperties = HorizontalIndicatorProperties(
-                enabled = true,
-                indicators = amounts
+                enabled = true
             ),
             labelProperties = LabelProperties(
-                labels = days,
+                labels = labels,
                 enabled = true
             )
         )

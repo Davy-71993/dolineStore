@@ -25,8 +25,10 @@ import androidx.room.TypeConverters
         OrderItemEntity::class,
         ClientEntity::class,
         StaffEntity::class,
-        CreditPayment::class],
-    version = 11,
+        CreditPayment::class,
+        SupplierEntity::class,
+        ItemSupplierCrossRef::class],
+    version = 12,
     exportSchema = false
 )
 @TypeConverters(
@@ -56,6 +58,7 @@ abstract class DolineStoreDatabase: RoomDatabase() {
     abstract fun clientDao(): ClientDao
     abstract fun staffDao(): StaffDao
     abstract fun creditPaymentDao(): CreditPaymentDao
+    abstract fun supplierDao(): SupplierDao
 
     companion object {
         @Volatile

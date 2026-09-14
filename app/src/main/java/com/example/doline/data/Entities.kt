@@ -90,7 +90,17 @@ data class ItemWithBatches(
         parentColumn = "id",
         entityColumn = "itemId"
     )
-    val batches: List<BatchWithPricings>
+    val batches: List<BatchWithPricings>,
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "id",
+        associateBy = Junction(
+            value = ItemSupplierCrossRef::class,
+            parentColumn = "itemId",
+            entityColumn = "supplierId"
+        )
+    )
+    val suppliers: List<SupplierEntity> = emptyList()
 )
 
 data class BatchWithItem(
@@ -362,6 +372,77 @@ data class OrderItem(
         entity = Pricing::class
     )
     val pricing: Pricing
+)
+
+@Entity(
+    tableName = "suppliers",
+    foreignKeys = [
+        ForeignKey(
+            entity = Store::class,
+            parentColumns = ["id"],
+            childColumns = ["storeId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class SupplierEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val storeId: Long,
+    val name: String,
+    val address: String? = null,
+    val phone: String? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "item_supplier_cross_ref",
+    primaryKeys = ["itemId", "supplierId"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ItemEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["itemId"],
+            onDelete = ForeignKey.CASCADE
+        ),
+        ForeignKey(
+            entity = SupplierEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["supplierId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class ItemSupplierCrossRef(
+    val itemId: Long,
+    val supplierId: Long
+)
+
+data class ItemWithSuppliers(
+    @Embedded val item: ItemEntity,
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "id",
+        associateBy = Junction(
+            value = ItemSupplierCrossRef::class,
+            parentColumn = "itemId",
+            entityColumn = "supplierId"
+        )
+    )
+    val suppliers: List<SupplierEntity>
+)
+
+data class SupplierWithItems(
+    @Embedded val fields: SupplierEntity,
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "id",
+        associateBy = Junction(
+            value = ItemSupplierCrossRef::class,
+            parentColumn = "supplierId",
+            entityColumn = "itemId"
+        )
+    )
+    val items: List<ItemEntity>
 )
 
 @Entity("clients")

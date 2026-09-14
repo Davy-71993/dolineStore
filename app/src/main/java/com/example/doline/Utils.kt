@@ -177,6 +177,14 @@ enum class DeviceConfiguration {
                 TABLET_LANDSCAPE, DESKTOP -> 2
             }
         }
+
+        fun getStatCardColumnCount(config: DeviceConfiguration): Int {
+            return when (config) {
+                MOBILE_PORTRAIT -> 1
+                MOBILE_LANDSCAPE -> 2
+                TABLET_PORTRAIT, TABLET_LANDSCAPE, DESKTOP -> 3
+            }
+        }
     }
 }
 

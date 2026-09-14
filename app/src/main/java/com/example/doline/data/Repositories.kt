@@ -124,16 +124,14 @@ class ItemRepository @Inject constructor(
     fun getAllActiveItems(storeID: Long): Flow<List<ItemWithBatches>> {
         return dao.getAllItems(storeID)
             .map { list ->
-                list.map { (item, batches) -> ItemWithBatches(item = item, batches = batches.filter { it.batch.quantity > 0 }) }
+                list.map { iwb -> iwb.copy(batches = iwb.batches.filter { it.batch.quantity > 0 }) }
             }
     }
     fun getAllOutOfStockItems(storeID: Long): Flow<List<ItemWithBatches>> {
         return dao.getAllItems(storeID)
             .map { list ->
-                list.map { (item, batches) ->
-                    ItemWithBatches(item = item, batches = batches.filter {
-                        it.batch.quantity == 0.toDouble()
-                    })
+                list.map { iwb ->
+                    iwb.copy(batches = iwb.batches.filter { it.batch.quantity == 0.toDouble() })
                 }
             }
     }
@@ -232,6 +230,7 @@ class OrderRepository @Inject constructor(
 ){
     suspend fun insert(item: OrderEntity): Long = dao.insert(item)
     fun getAllOrders(storeId: Long): Flow<List<Order>> = dao.getStoreOrders(storeId)
+    fun getClientOrders(clientId: Long): Flow<List<Order>> = dao.getClientOrders(clientId)
     fun getOrderById(orderId: Long): Flow<Order> = dao.getOrderById(orderId)
     suspend fun updateCreditBalance(amount: Double, orderId: Long) = dao.updateCreditBalance(amount, orderId)
     suspend fun editOrder(item: OrderEntity) = dao.editOrder(item)
@@ -254,6 +253,22 @@ class ClientRepository @Inject constructor(
     fun getClientById(clientId: Long): Flow<ClientEntity?> = dao.getClientById(clientId)
     suspend fun editClient(client: ClientEntity) = dao.update(client)
     suspend fun deleteClient(client: ClientEntity) = dao.delete(client)
+}
+
+class SupplierRepository @Inject constructor(
+    private val dao: SupplierDao
+){
+    suspend fun insert(supplier: SupplierEntity): Long = dao.insert(supplier)
+    fun getSuppliers(storeId: Long): Flow<List<SupplierEntity>> = dao.getSuppliers(storeId)
+    fun getSupplierById(supplierId: Long): Flow<SupplierEntity?> = dao.getSupplierById(supplierId)
+    fun getSupplierWithItems(supplierId: Long): Flow<SupplierWithItems?> = dao.getSupplierWithItems(supplierId)
+    fun getItemWithSuppliers(itemId: Long): Flow<ItemWithSuppliers?> = dao.getItemWithSuppliers(itemId)
+    suspend fun editSupplier(supplier: SupplierEntity) = dao.update(supplier)
+    suspend fun deleteSupplier(supplier: SupplierEntity) = dao.delete(supplier)
+    suspend fun linkItemToSupplier(itemId: Long, supplierId: Long) =
+        dao.linkItemToSupplier(ItemSupplierCrossRef(itemId, supplierId))
+    suspend fun unlinkItemFromSupplier(itemId: Long, supplierId: Long) =
+        dao.unlinkItemFromSupplier(ItemSupplierCrossRef(itemId, supplierId))
 }
 
 class StaffRepository @Inject constructor(

@@ -377,7 +377,6 @@ class RestockViewModel @Inject constructor(
             var er = _error.value
             val batch = _batch.value
             val pricings = _pricings.value
-
             val bn = batch.batchNumber
             val qty = batch.quantity
             val uts = batch.units
@@ -406,7 +405,8 @@ class RestockViewModel @Inject constructor(
                     available = if(inStock > 0) qty else inStock+qty,
                     units = uts!!,
                     expiryDate = _batch.value.expiryDate,
-                    manufactureDate = _batch.value.manufactureDate
+                    manufactureDate = _batch.value.manufactureDate,
+                    buyingPrice = _batch.value.buyingPrice
                 )
 
                 val batchId = batchRepository.insertBatch(b)

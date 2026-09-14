@@ -181,6 +181,10 @@ interface OrderDao {
     fun getStoreOrders(storeId: Long) : Flow<List<Order>>
 
     @Transaction
+    @Query("SELECT * FROM orders WHERE clientId = :clientId AND deletedAt IS NULL ORDER BY createdAt DESC")
+    fun getClientOrders(clientId: Long) : Flow<List<Order>>
+
+    @Transaction
     @Query("SELECT * FROM orders WHERE id = :orderId")
     fun getOrderById(orderId: Long) : Flow<Order>
 
@@ -247,6 +251,38 @@ interface ClientDao {
 
     @Query("SELECT * FROM clients WHERE id = :id LIMIT 1")
     fun getClientById(id: Long): Flow<ClientEntity?>
+}
+
+@Dao
+interface SupplierDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(supplier: SupplierEntity): Long
+
+    @Update
+    suspend fun update(supplier: SupplierEntity)
+
+    @Delete
+    suspend fun delete(supplier: SupplierEntity)
+
+    @Query("SELECT * FROM suppliers WHERE storeId = :storeId")
+    fun getSuppliers(storeId: Long): Flow<List<SupplierEntity>>
+
+    @Query("SELECT * FROM suppliers WHERE id = :id LIMIT 1")
+    fun getSupplierById(id: Long): Flow<SupplierEntity?>
+
+    @Transaction
+    @Query("SELECT * FROM suppliers WHERE id = :id LIMIT 1")
+    fun getSupplierWithItems(id: Long): Flow<SupplierWithItems?>
+
+    @Transaction
+    @Query("SELECT * FROM items WHERE id = :itemId LIMIT 1")
+    fun getItemWithSuppliers(itemId: Long): Flow<ItemWithSuppliers?>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun linkItemToSupplier(crossRef: ItemSupplierCrossRef)
+
+    @Delete
+    suspend fun unlinkItemFromSupplier(crossRef: ItemSupplierCrossRef)
 }
 
 @Dao

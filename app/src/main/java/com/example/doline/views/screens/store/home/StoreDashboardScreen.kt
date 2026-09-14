@@ -1,5 +1,8 @@
 package com.example.doline.views.screens.store.home
 
+import android.os.Build
+import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.EaseInOutCubic
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -11,13 +14,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -36,6 +42,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarColors
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -47,29 +54,42 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
+import com.example.doline.DeviceConfiguration
 import com.example.doline.R
+import com.example.doline.capitalize
+import com.example.doline.data.ClientRepository
+import com.example.doline.data.Order
+import com.example.doline.data.OrderProgress
+import com.example.doline.data.OrderRepository
+import com.example.doline.data.Pricing
+import com.example.doline.data.SELECTED_CURRENCY
 import com.example.doline.data.Store
 import com.example.doline.data.StoreRepository
+import com.example.doline.orderStausColors
+import com.example.doline.timestampToDate
 import com.example.doline.ui.theme.IconSize
 import com.example.doline.ui.theme.Rounding
 import com.example.doline.ui.theme.Spacing
 import com.example.doline.views.components.AppButton
 import com.example.doline.views.components.AppText
+import com.example.doline.views.components.EmptyMessage
 import com.example.doline.views.components.ErrorMessage
 import com.example.doline.views.components.LoadingScreen
+import com.example.doline.views.components.PriceTag
 import com.example.doline.views.components.Screen
 import com.example.doline.views.components.TextType
+import com.example.doline.zeroed
 import dagger.hilt.android.lifecycle.HiltViewModel
 import ir.ehsannarmani.compose_charts.LineChart
 import ir.ehsannarmani.compose_charts.PieChart
@@ -80,10 +100,14 @@ import ir.ehsannarmani.compose_charts.models.Pie
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.ZoneId
 import javax.inject.Inject
 
 
+@RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StoreDashBoardScreen(
@@ -97,57 +121,18 @@ fun StoreDashBoardScreen(
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
 
     val uiState by viewModel.uiState.collectAsState()
+    val stats by viewModel.dashboardStats.collectAsState()
+
+    val windowSizeClass = currentWindowAdaptiveInfo().windowSizeClass
+    val deviceConfig = DeviceConfiguration.getWindowSizeClass(windowSizeClass)
+    val singleColumnSummary = deviceConfig == DeviceConfiguration.MOBILE_PORTRAIT
 
     LaunchedEffect(storeId) {
         viewModel.getStore(storeId)
+        viewModel.observeDashboardData(storeId)
     }
 
-    var pieData by remember {
-        mutableStateOf(
-            listOf(
-                Pie(label = "Yarket water", data = 18.0, color = Color.Red, selectedColor = Color.Green),
-                Pie(label = "Lato milk", data = 35.0, color = Color.Cyan, selectedColor = Color.Blue),
-                Pie(label = "Sugar", data = 32.0, color = Color.Gray, selectedColor = Color.Yellow),
-                Pie(label = "Others", data = 15.0, color = Color.Blue, selectedColor = Color.Magenta),
-            )
-        )
-    }
-    val recentOrders by remember {
-        mutableStateOf(
-            listOf(
-                Order(
-                    "Wandera Deo",
-                    "UGX 120,000",
-                    1008,
-                    "completed"
-                ),
-                Order(
-                    "Okello Smith",
-                    "UGX 70,000",
-                    1408,
-                    "ready"
-                ),
-                Order(
-                    "Wafula David",
-                    "UGX 390,000",
-                    1078,
-                    "pending"
-                ),
-                Order(
-                    "Ssenyonga Joseph",
-                    "UGX 620,000",
-                    1299,
-                    "cancelled"
-                ),
-                Order(
-                    "Nekessa Joan",
-                    "UGX 1,900,000",
-                    2022,
-                    "completed"
-                )
-            )
-        )
-    }
+    val pieData = remember(stats.topSellingItems) { buildTopSellingPieData(stats.topSellingItems) }
 
     when(val state = uiState){
         is UiState.Loading -> {
@@ -196,8 +181,7 @@ fun StoreDashBoardScreen(
                                         painter = painterResource(id = R.drawable.dashboard ),
                                         contentDescription = "Dashboard",
                                         modifier = Modifier.size(IconSize.BIG)
-                                    )
-                                },
+                                    ) },
                                 colors = NavigationDrawerItemDefaults.colors(
                                     selectedContainerColor = MaterialTheme.colorScheme.surface
                                 )
@@ -267,6 +251,19 @@ fun StoreDashBoardScreen(
                                     Icon(
                                         painter = painterResource(R.drawable.user),
                                         contentDescription = "Clients",
+                                        modifier = Modifier.size(IconSize.BIG)
+                                    )
+                                }
+                            )
+                            NavigationDrawerItem(
+                                label = { AppText("Suppliers") },
+                                onClick = { navController.navigate("$storeId/suppliers"){popUpTo("$storeId/suppliers")}
+                                    scope.launch { drawerState.close() }},
+                                selected = currentRoute == "$storeId/suppliers",
+                                icon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.logistics),
+                                        contentDescription = "Suppliers",
                                         modifier = Modifier.size(IconSize.BIG)
                                     )
                                 }
@@ -367,22 +364,34 @@ fun StoreDashBoardScreen(
                                     verticalArrangement = Arrangement.spacedBy(Spacing.MD)
                                 ) {
                                     AppText("TOTAL REVENUE", color = MaterialTheme.colorScheme.onPrimary)
-                                    AppText("UGX 240,000", variant = TextType.Brand, color = MaterialTheme.colorScheme.onPrimary)
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(Spacing.SM),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(id = R.drawable.trending_up ),
-                                            contentDescription = "growth",
-                                            modifier = Modifier.size(IconSize.SMALL),
-                                            tint = MaterialTheme.colorScheme.onPrimary
-                                        )
-                                        AppText("12.5% from last month", color = MaterialTheme.colorScheme.onPrimary)
+                                    PriceTag(
+                                        Pricing(amount = stats.totalRevenue, currency = SELECTED_CURRENCY, itemId = 0),
+                                        textColor = MaterialTheme.colorScheme.onPrimary,
+                                        size = TextType.Brand
+                                    )
+                                    val growth = stats.revenueGrowthPercent
+                                    if (growth != null){
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(Spacing.SM),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(
+                                                    id = if (growth >= 0) R.drawable.trending_up else R.drawable.trending_down
+                                                ),
+                                                contentDescription = "growth",
+                                                modifier = Modifier.size(IconSize.SMALL),
+                                                tint = MaterialTheme.colorScheme.onPrimary
+                                            )
+                                            AppText(
+                                                "${if (growth >= 0) "+" else ""}${"%.1f".format(growth)}% from last month",
+                                                color = MaterialTheme.colorScheme.onPrimary
+                                            )
+                                        }
                                     }
                                     AppButton("View full report", onClick = {
-                                        navController.navigate("store/reports"){
-                                            popUpTo("store/reports")
+                                        navController.navigate("store/$storeId/reports"){
+                                            popUpTo("store/$storeId/reports")
                                         }
                                     })
                                 }
@@ -406,92 +415,69 @@ fun StoreDashBoardScreen(
                                     verticalArrangement = Arrangement.spacedBy(Spacing.MD)
                                 ) {
                                     AppText("PERFORMANCE TREND")
-                                    AppText("Daily sales volume", color = MaterialTheme.colorScheme.onBackground.copy(.6f))
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(300.dp)
-                                    ){
-                                        LineChart(
-                                            modifier = Modifier.fillMaxSize(),
-                                            data = remember {
-                                                listOf(
-                                                    Line(
-                                                        label = "Sales",
-                                                        values = listOf(28.0, 41.0, 5.0, 10.0, 35.0),
-                                                        color = SolidColor(Color(0xFF9E4300)),
-                                                        firstGradientFillColor = Color(0xFF9E4300).copy(alpha = .5f),
-                                                        secondGradientFillColor = Color.Transparent,
-                                                        strokeAnimationSpec = tween(
-                                                            2000,
-                                                            easing = EaseInOutCubic
-                                                        ),
-                                                        gradientAnimationDelay = 1000,
-                                                        drawStyle = DrawStyle.Stroke(width = 2.dp),
+                                    AppText("Daily sales volume, past 7 days", color = MaterialTheme.colorScheme.onBackground.copy(.6f))
+                                    if (stats.dailyRevenue.all { it == 0.0 }){
+                                        Box(
+                                            modifier = Modifier.fillMaxWidth().height(120.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            AppText("No sales recorded in the past week.", color = MaterialTheme.colorScheme.onBackground.copy(.6f))
+                                        }
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(300.dp)
+                                        ){
+                                            LineChart(
+                                                modifier = Modifier.fillMaxSize(),
+                                                data = remember(stats.dailyRevenue) {
+                                                    listOf(
+                                                        Line(
+                                                            label = "Sales",
+                                                            values = stats.dailyRevenue,
+                                                            color = SolidColor(Color(0xFF9E4300)),
+                                                            firstGradientFillColor = Color(0xFF9E4300).copy(alpha = .5f),
+                                                            secondGradientFillColor = Color.Transparent,
+                                                            strokeAnimationSpec = tween(
+                                                                2000,
+                                                                easing = EaseInOutCubic
+                                                            ),
+                                                            gradientAnimationDelay = 1000,
+                                                            drawStyle = DrawStyle.Stroke(width = 2.dp),
+                                                        )
                                                     )
-                                                )
-                                            },
-                                            animationMode = AnimationMode.Together(delayBuilder = {
-                                                it * 500L
-                                            }),
-                                        )
+                                                },
+                                                animationMode = AnimationMode.Together(delayBuilder = {
+                                                    it * 500L
+                                                }),
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                         item {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(Spacing.SM),
-                                horizontalArrangement = Arrangement.spacedBy(Spacing.SM)
-                            ) {
+                            if (singleColumnSummary) {
                                 Column(
                                     modifier = Modifier
-                                        .weight(1f)
-                                        .background(
-                                            MaterialTheme.colorScheme.surface,
-                                            shape = RoundedCornerShape(Rounding.MD)
-                                        )
-                                        .padding(Spacing.XL),
-                                    verticalArrangement = Arrangement.spacedBy(Spacing.XS)
+                                        .fillMaxWidth()
+                                        .padding(Spacing.SM),
+                                    verticalArrangement = Arrangement.spacedBy(Spacing.SM)
                                 ) {
-                                    AppText("ACTIVE ORDERS")
-                                    AppText(
-                                        text= "8",
-                                        variant = TextType.Brand,
-                                        modifier = Modifier.align(Alignment.CenterHorizontally)
-                                    )
-                                    AppText(
-                                        text= "2 Ready for pickup",
-                                        color = MaterialTheme.colorScheme.onBackground.copy(.6f),
-                                        variant = TextType.Small
-                                    )
+                                    ActiveOrdersSummaryCard(stats, modifier = Modifier.fillMaxWidth())
+                                    TotalClientsSummaryCard(stats, modifier = Modifier.fillMaxWidth())
                                 }
-
-                                Column(
+                            } else {
+                                Row(
                                     modifier = Modifier
-                                        .weight(1f)
-                                        .background(
-                                            MaterialTheme.colorScheme.surface,
-                                            shape = RoundedCornerShape(Rounding.MD)
-                                        )
-                                        .padding(Spacing.XL),
-                                    verticalArrangement = Arrangement.spacedBy(Spacing.XS)
+                                        .fillMaxWidth()
+                                        .padding(Spacing.SM),
+                                    horizontalArrangement = Arrangement.spacedBy(Spacing.SM)
                                 ) {
-                                    AppText("TOTAL VIEWS")
-                                    AppText(
-                                        text = "1.8K",
-                                        variant = TextType.Brand,
-                                        modifier = Modifier.align(Alignment.CenterHorizontally)
-                                    )
-                                    AppText(
-                                        text= "Peak 4:00PM today",
-                                        color = MaterialTheme.colorScheme.onBackground.copy(.6f),
-                                        variant = TextType.Small
-                                    )
+                                    ActiveOrdersSummaryCard(stats, modifier = Modifier.weight(1f))
+                                    TotalClientsSummaryCard(stats, modifier = Modifier.weight(1f))
                                 }
-
                             }
                         }
                         item {
@@ -511,31 +497,65 @@ fun StoreDashBoardScreen(
                                     verticalArrangement = Arrangement.spacedBy(Spacing.MD)
                                 ) {
                                     AppText("TOP SELLING ITEMS")
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(300.dp)
-                                    ){
-                                        PieChart(
-                                            modifier = Modifier.fillMaxSize(),
-                                            data = pieData,
-                                            onPieClick = {
-                                                println("${it.label} Clicked")
-                                                val pieIndex = pieData.indexOf(it)
-                                                pieData = pieData.mapIndexed { mapIndex, pie -> pie.copy(selected = pieIndex == mapIndex) }
-                                            },
-                                            selectedScale = 1.2f,
-                                            scaleAnimEnterSpec = spring(
-                                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                                stiffness = Spring.StiffnessLow
-                                            ),
-                                            colorAnimEnterSpec = tween(300),
-                                            colorAnimExitSpec = tween(300),
-                                            scaleAnimExitSpec = tween(300),
-                                            spaceDegreeAnimExitSpec = tween(300),
-                                            selectedPaddingDegree = 4f,
-                                            style = Pie.Style.Stroke(width = 40.dp),
-                                        )
+                                    if (pieData.isEmpty()){
+                                        Box(
+                                            modifier = Modifier.fillMaxWidth().height(120.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            AppText("No sales recorded yet.", color = MaterialTheme.colorScheme.onBackground.copy(.6f))
+                                        }
+                                    } else {
+                                        var pieState by remember(pieData) { mutableStateOf(pieData) }
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(260.dp)
+                                        ){
+                                            PieChart(
+                                                modifier = Modifier.fillMaxSize(),
+                                                data = pieState,
+                                                onPieClick = {
+                                                    val pieIndex = pieState.indexOf(it)
+                                                    pieState = pieState.mapIndexed { mapIndex, pie -> pie.copy(selected = pieIndex == mapIndex) }
+                                                },
+                                                selectedScale = 1.2f,
+                                                scaleAnimEnterSpec = spring(
+                                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                    stiffness = Spring.StiffnessLow
+                                                ),
+                                                colorAnimEnterSpec = tween(300),
+                                                colorAnimExitSpec = tween(300),
+                                                scaleAnimExitSpec = tween(300),
+                                                spaceDegreeAnimExitSpec = tween(300),
+                                                selectedPaddingDegree = 4f,
+                                                style = Pie.Style.Stroke(width = 40.dp),
+                                            )
+                                        }
+                                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.XS)) {
+                                            pieState.forEach { pie ->
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(10.dp)
+                                                                .clip(CircleShape)
+                                                                .background(pie.color)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(Spacing.SM))
+                                                        AppText(pie.label ?: "", variant = TextType.Small)
+                                                    }
+                                                    AppText(
+                                                        pie.data.formatQuantity(),
+                                                        variant = TextType.Small,
+                                                        color = MaterialTheme.colorScheme.onBackground.copy(.6f)
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -552,31 +572,21 @@ fun StoreDashBoardScreen(
                                     verticalArrangement = Arrangement.spacedBy(Spacing.MD)
                                 ) {
                                     AppText("RECENT ORDERS")
-                                    recentOrders.forEach { order ->
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .background(
-                                                    MaterialTheme.colorScheme.surface,
-                                                    shape = RoundedCornerShape(Rounding.MD)
-                                                )
-                                                .padding(Spacing.MD)
-                                                .clickable {},
-                                            verticalArrangement = Arrangement.spacedBy(Spacing.XS)
-                                        ) {
-                                            AppText(order.client, variant = TextType.Label)
-                                            AppText(order.amount, variant = TextType.Heading, color = MaterialTheme.colorScheme.primary)
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                AppText("#${order.id}", variant = TextType.Small, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
-                                                AppText(order.status.uppercase(), variant = TextType.Small, color = MaterialTheme.colorScheme.primary)
-                                            }
+                                    if (stats.recentOrders.isEmpty()){
+                                        EmptyMessage("No orders yet.")
+                                    } else {
+                                        stats.recentOrders.forEach { order ->
+                                            RecentOrderCard(
+                                                order = order,
+                                                onClick = { navController.navigate("$storeId/orders/${order.fields.id}") }
+                                            )
                                         }
                                     }
                                 }
                             }
+                        }
+                        item {
+                            Spacer(Modifier.height(60.dp))
                         }
                     }
                 }
@@ -588,14 +598,150 @@ fun StoreDashBoardScreen(
 
 }
 
+@Composable
+private fun ActiveOrdersSummaryCard(stats: DashboardStats, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .background(
+                MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(Rounding.MD)
+            )
+            .padding(Spacing.XL),
+        verticalArrangement = Arrangement.spacedBy(Spacing.XS)
+    ) {
+        AppText("ACTIVE ORDERS")
+        AppText(
+            text = "${stats.activeOrdersCount}",
+            variant = TextType.Brand,
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        )
+        AppText(
+            text = "${stats.readyOrdersCount} Ready for pickup",
+            color = MaterialTheme.colorScheme.onBackground.copy(.6f),
+            variant = TextType.Small
+        )
+    }
+}
+
+@Composable
+private fun TotalClientsSummaryCard(stats: DashboardStats, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .background(
+                MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(Rounding.MD)
+            )
+            .padding(Spacing.XL),
+        verticalArrangement = Arrangement.spacedBy(Spacing.XS)
+    ) {
+        AppText("TOTAL CLIENTS")
+        AppText(
+            text = "${stats.totalClients}",
+            variant = TextType.Brand,
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        )
+        AppText(
+            text = "${stats.newClientsThisWeek} new this week",
+            color = MaterialTheme.colorScheme.onBackground.copy(.6f),
+            variant = TextType.Small
+        )
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+@Composable
+private fun RecentOrderCard(order: Order, onClick: () -> Unit) {
+    val orderAmount = order.items.sumOf { it.pricing.amount * it.fields.qty }
+    val (containerColor, textColor) = orderStausColors(order.fields.progress)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(Rounding.MD)
+            )
+            .padding(Spacing.MD)
+            .clickable { onClick() },
+        verticalArrangement = Arrangement.spacedBy(Spacing.XS)
+    ) {
+        AppText(order.client?.name ?: "Walk-in customer", variant = TextType.Label)
+        PriceTag(
+            Pricing(amount = orderAmount, currency = SELECTED_CURRENCY, itemId = 0),
+            textColor = MaterialTheme.colorScheme.primary,
+            size = TextType.Heading
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AppText(
+                "#${order.fields.id.zeroed()} • ${timestampToDate(order.fields.createdAt)}",
+                variant = TextType.Small,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+            )
+            AppText(
+                order.fields.progress.name.replace("_", " ").capitalize(),
+                variant = TextType.LabelSmall,
+                color = textColor,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(Rounding.SM))
+                    .background(containerColor)
+                    .padding(Spacing.SM, Spacing.XXS)
+            )
+        }
+    }
+}
+
+private fun Double.formatQuantity(): String {
+    return if (this == this.toLong().toDouble()) this.toLong().toString() else "%.1f".format(this)
+}
+
+private val TOP_SELLING_PALETTE = listOf(
+    Color(0xFF2A78D6) to Color(0xFF2260AB), // blue
+    Color(0xFFEB6834) to Color(0xFFBC532A), // orange
+    Color(0xFF1BAF7A) to Color(0xFF168C62), // aqua
+    Color(0xFFEDA100) to Color(0xFFBE8100), // yellow
+)
+private val TOP_SELLING_OTHERS_COLOR = Color(0xFF898781) to Color(0xFF6E6C67)
+
+private fun buildTopSellingPieData(items: List<TopSellingItem>): List<Pie> {
+    if (items.isEmpty()) return emptyList()
+    val top = items.take(TOP_SELLING_PALETTE.size)
+    val rest = items.drop(TOP_SELLING_PALETTE.size)
+
+    val pies = top.mapIndexed { index, item ->
+        val (color, selectedColor) = TOP_SELLING_PALETTE[index]
+        Pie(label = item.name, data = item.quantity, color = color, selectedColor = selectedColor)
+    }.toMutableList()
+
+    if (rest.isNotEmpty()) {
+        val (color, selectedColor) = TOP_SELLING_OTHERS_COLOR
+        pies += Pie(
+            label = "Others",
+            data = rest.sumOf { it.quantity },
+            color = color,
+            selectedColor = selectedColor
+        )
+    }
+    return pies
+}
+
 @HiltViewModel
 class ScreenViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private val storeRepository: StoreRepository
+    private val storeRepository: StoreRepository,
+    private val orderRepository: OrderRepository,
+    private val clientRepository: ClientRepository
 ): ViewModel(){
     val storeId = savedStateHandle.get<Long>("storeId")
     private val _uiState = MutableStateFlow<UiState>(UiState.Loading)
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+
+    private val _dashboardStats = MutableStateFlow(DashboardStats())
+    val dashboardStats: StateFlow<DashboardStats> = _dashboardStats.asStateFlow()
+
+    private var dashboardObserved = false
 
     fun getStore(storeId: Long?){
         if (storeId == null){
@@ -613,6 +759,107 @@ class ScreenViewModel @Inject constructor(
             }
         }
     }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun observeDashboardData(storeId: Long?){
+        if (storeId == null || dashboardObserved) return
+        dashboardObserved = true
+        viewModelScope.launch {
+            try {
+                combine(
+                    orderRepository.getAllOrders(storeId),
+                    clientRepository.getClients(storeId)
+                ) { orders, clients ->
+                    val zone = ZoneId.systemDefault()
+                    val weekAgo = LocalDate.now(zone).minusDays(7).atStartOfDay(zone).toInstant().toEpochMilli()
+                    val newClientsThisWeek = clients.count { it.createdAt >= weekAgo }
+                    buildDashboardStats(orders, clients.size, newClientsThisWeek)
+                }.collect {
+                    _dashboardStats.value = it
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+}
+
+data class TopSellingItem(
+    val name: String,
+    val quantity: Double
+)
+
+data class DashboardStats(
+    val totalRevenue: Double = 0.0,
+    val revenueGrowthPercent: Double? = null,
+    val dailyRevenue: List<Double> = List(7) { 0.0 },
+    val activeOrdersCount: Int = 0,
+    val readyOrdersCount: Int = 0,
+    val totalClients: Int = 0,
+    val newClientsThisWeek: Int = 0,
+    val topSellingItems: List<TopSellingItem> = emptyList(),
+    val recentOrders: List<Order> = emptyList()
+)
+
+@RequiresApi(Build.VERSION_CODES.O)
+private fun buildDashboardStats(orders: List<Order>, totalClients: Int, newClientsThisWeek: Int): DashboardStats {
+    fun Order.revenue(): Double = items.sumOf { it.pricing.amount * it.fields.qty }
+
+    val countedOrders = orders.filter {
+        it.fields.progress != OrderProgress.DRAFT && it.fields.progress != OrderProgress.CANCELLED
+    }
+
+    val totalRevenue = countedOrders.sumOf { it.revenue() }
+
+    val zone = ZoneId.systemDefault()
+    val today = LocalDate.now(zone)
+    val startOfThisMonth = today.withDayOfMonth(1)
+    val startOfLastMonth = startOfThisMonth.minusMonths(1)
+
+    fun epochOf(date: LocalDate) = date.atStartOfDay(zone).toInstant().toEpochMilli()
+
+    val thisMonthRevenue = countedOrders
+        .filter { it.fields.createdAt >= epochOf(startOfThisMonth) }
+        .sumOf { it.revenue() }
+    val lastMonthRevenue = countedOrders
+        .filter { it.fields.createdAt >= epochOf(startOfLastMonth) && it.fields.createdAt < epochOf(startOfThisMonth) }
+        .sumOf { it.revenue() }
+
+    val growth = if (lastMonthRevenue > 0) ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100 else null
+
+    val dailyRevenue = (6 downTo 0).map { offset ->
+        val day = today.minusDays(offset.toLong())
+        val dayStart = epochOf(day)
+        val dayEnd = epochOf(day.plusDays(1))
+        countedOrders.filter { it.fields.createdAt in dayStart..<dayEnd }.sumOf { it.revenue() }
+    }
+
+    val activeOrdersCount = orders.count {
+        it.fields.progress == OrderProgress.PENDING ||
+            it.fields.progress == OrderProgress.READY ||
+            it.fields.progress == OrderProgress.SHIPPING
+    }
+    val readyOrdersCount = orders.count { it.fields.progress == OrderProgress.READY }
+
+    val topSellingItems = countedOrders
+        .flatMap { it.items }
+        .groupBy { it.item.name }
+        .map { (name, orderItems) -> TopSellingItem(name, orderItems.sumOf { it.fields.qty }) }
+        .sortedByDescending { it.quantity }
+
+    val recentOrders = orders.sortedByDescending { it.fields.createdAt }.take(5)
+
+    return DashboardStats(
+        totalRevenue = totalRevenue,
+        revenueGrowthPercent = growth,
+        dailyRevenue = dailyRevenue,
+        activeOrdersCount = activeOrdersCount,
+        readyOrdersCount = readyOrdersCount,
+        totalClients = totalClients,
+        newClientsThisWeek = newClientsThisWeek,
+        topSellingItems = topSellingItems,
+        recentOrders = recentOrders
+    )
 }
 
 sealed class UiState{
@@ -620,10 +867,3 @@ sealed class UiState{
     data class Success(val store: Store?): UiState()
     data class Error(val message: String): UiState()
 }
-
-data class Order(
-    val client: String,
-    val amount: String,
-    val id: Int,
-    val status: String
-)

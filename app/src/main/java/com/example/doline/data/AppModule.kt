@@ -177,6 +177,12 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideSupplierDao(database: DolineStoreDatabase): SupplierDao {
+        return  database.supplierDao()
+    }
+
+    @Provides
+    @Singleton
     fun provideUserProfileRepository(dao: UserProfileDao, supabaseClient: SupabaseClient) = UserProfileRepository(dao, supabaseClient)
 
     @Provides
@@ -226,6 +232,10 @@ object AppModule {
     @Provides
     @Singleton
     fun provideStaffRepository(dao: StaffDao) = StaffRepository(dao)
+
+    @Provides
+    @Singleton
+    fun provideSupplierRepository(dao: SupplierDao) = SupplierRepository(dao)
 
     @Provides
     @Singleton

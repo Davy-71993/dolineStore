@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -52,6 +54,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import com.example.doline.R
+import com.example.doline.data.ClientEntity
+import com.example.doline.data.ClientRepository
+import com.example.doline.data.CreditPayment
 import com.example.doline.data.Order
 import com.example.doline.data.OrderEntity
 import com.example.doline.data.OrderItem
@@ -62,8 +67,10 @@ import com.example.doline.data.OrderStatus
 import com.example.doline.data.Pricing
 import com.example.doline.data.PricingDetails
 import com.example.doline.data.SELECTED_CURRENCY
+import com.example.doline.timestampToDateTime
 import com.example.doline.ui.theme.FontSize
 import com.example.doline.ui.theme.IconSize
+import com.example.doline.ui.theme.Rounding
 import com.example.doline.ui.theme.Spacing
 import com.example.doline.ui.theme.successLight
 import com.example.doline.views.components.AppButton
@@ -93,6 +100,7 @@ fun OrderScreen(navController: NavController, viewModel: OrderScreenViewModel){
     val errorMessage by viewModel.errorMessage.collectAsState()
     val openPaymentSheet by viewModel.openPaymentSheet.collectAsState()
     val completeRequested by viewModel.completeRequested.collectAsState()
+    val clients by viewModel.clients.collectAsState()
 
     var expanded by remember {
         mutableStateOf(false)
@@ -101,6 +109,8 @@ fun OrderScreen(navController: NavController, viewModel: OrderScreenViewModel){
     var delete by remember { mutableStateOf(false) }
     var returning by remember { mutableStateOf(false) }
     var returns by remember { mutableStateOf<Map<Long, OrderItemEntity>>(emptyMap()) }
+    var changingClient by remember { mutableStateOf(false) }
+    var viewingPayments by remember { mutableStateOf(false) }
 
     order?.let {
         MakePaymentSheet(
@@ -125,6 +135,20 @@ fun OrderScreen(navController: NavController, viewModel: OrderScreenViewModel){
             },
             order = it,
             open = completeRequested
+        )
+        SelectClientSheet(
+            open = changingClient,
+            clients = clients,
+            onClose = { changingClient = false },
+            onSelect = { clientId ->
+                viewModel.changeClient(clientId)
+                changingClient = false
+            }
+        )
+        PaymentsSheet(
+            open = viewingPayments,
+            payments = it.creditPayments,
+            onClose = { viewingPayments = false }
         )
         if (cancel){
             AlertDialog(
@@ -292,6 +316,39 @@ fun OrderScreen(navController: NavController, viewModel: OrderScreenViewModel){
                                     },
                                     leadingIcon = {
                                         Icon(painter = painterResource(R.drawable.user), modifier = Modifier.size(IconSize.NORMAL), contentDescription = null)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { AppText("Change client") },
+                                    onClick = {
+                                        changingClient = true
+                                        expanded = false
+                                    },
+                                    leadingIcon = {
+                                        Icon(painter = painterResource(R.drawable.user_pen), modifier = Modifier.size(IconSize.NORMAL), contentDescription = null)
+                                    }
+                                )
+                            } else {
+                                DropdownMenuItem(
+                                    text = { AppText("Add client") },
+                                    onClick = {
+                                        changingClient = true
+                                        expanded = false
+                                    },
+                                    leadingIcon = {
+                                        Icon(painter = painterResource(R.drawable.user_add), modifier = Modifier.size(IconSize.NORMAL), contentDescription = null)
+                                    }
+                                )
+                            }
+                            if (status == OrderStatus.CREDIT){
+                                DropdownMenuItem(
+                                    text = { AppText("Payments") },
+                                    onClick = {
+                                        viewingPayments = true
+                                        expanded = false
+                                    },
+                                    leadingIcon = {
+                                        Icon(painter = painterResource(R.drawable.tag), modifier = Modifier.size(IconSize.NORMAL), contentDescription = null)
                                     }
                                 )
                             }
@@ -776,10 +833,135 @@ fun MakePaymentSheet(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SelectClientSheet(
+    open: Boolean,
+    clients: List<ClientEntity>,
+    onClose: () -> Unit,
+    onSelect: (clientId: Long) -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState()
+
+    if (open) {
+        ModalBottomSheet(
+            onDismissRequest = onClose,
+            sheetState = sheetState
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(Spacing.MD, 0.dp),
+                verticalArrangement = Arrangement.spacedBy(Spacing.MD)
+            ) {
+                AppText("Select client", variant = TextType.Heading)
+                if (clients.isEmpty()) {
+                    AppText(
+                        "No clients found. Add one from the Clients screen first.",
+                        color = colorScheme.onBackground.copy(.6f)
+                    )
+                    Spacer(Modifier.height(20.dp))
+                } else {
+                    LazyColumn(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(320.dp)
+                    ) {
+                        items(clients, key = { it.id }) { client ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onSelect(client.id) }
+                                    .padding(Spacing.MD, Spacing.SM),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    AppText(client.name, variant = TextType.Label)
+                                    if (client.phone != null) {
+                                        AppText(
+                                            client.phone,
+                                            variant = TextType.Small,
+                                            color = colorScheme.onBackground.copy(.6f)
+                                        )
+                                    }
+                                }
+                                Icon(
+                                    painter = painterResource(R.drawable.arrow_right),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(IconSize.NORMAL),
+                                    tint = colorScheme.onBackground.copy(.4f)
+                                )
+                            }
+                            HorizontalDivider()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PaymentsSheet(
+    open: Boolean,
+    payments: List<CreditPayment>,
+    onClose: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState()
+
+    if (open) {
+        ModalBottomSheet(
+            onDismissRequest = onClose,
+            sheetState = sheetState
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(Spacing.MD, 0.dp),
+                verticalArrangement = Arrangement.spacedBy(Spacing.MD)
+            ) {
+                AppText("Payments", variant = TextType.Heading)
+                if (payments.isEmpty()) {
+                    AppText(
+                        "No payments recorded yet.",
+                        color = colorScheme.onBackground.copy(.6f)
+                    )
+                    Spacer(Modifier.height(20.dp))
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.SM)) {
+                        payments.sortedByDescending { it.createdAt }.forEach { payment ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .background(colorScheme.surface, RoundedCornerShape(Rounding.SM))
+                                    .padding(Spacing.MD),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                PriceTag(Pricing(amount = payment.amount, currency = SELECTED_CURRENCY, itemId = 0))
+                                AppText(
+                                    timestampToDateTime(payment.createdAt),
+                                    variant = TextType.Small,
+                                    color = colorScheme.onBackground.copy(.6f)
+                                )
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(20.dp))
+            }
+        }
+    }
+}
+
 @HiltViewModel
 class OrderScreenViewModel @Inject constructor(
     savedState: SavedStateHandle,
-    private val orderRepository: OrderRepository
+    private val orderRepository: OrderRepository,
+    private val clientRepository: ClientRepository
 ): ViewModel(){
     val orderId = savedState.get<Long>("orderId")
     val storeId = savedState.get<Long>("storeId")
@@ -788,6 +970,7 @@ class OrderScreenViewModel @Inject constructor(
     private val _errorMessage = MutableStateFlow("")
     private val _openPaymentSheet = MutableStateFlow(false)
     private val _completeRequested = MutableStateFlow(false)
+    private val _clients = MutableStateFlow<List<ClientEntity>>(emptyList())
 
 
 
@@ -796,6 +979,7 @@ class OrderScreenViewModel @Inject constructor(
     val errorMessage: StateFlow<String> = _errorMessage
     val openPaymentSheet: StateFlow<Boolean> = _openPaymentSheet
     val completeRequested: StateFlow<Boolean> = _completeRequested
+    val clients: StateFlow<List<ClientEntity>> = _clients
 
     private suspend fun fetchOrderDetails(){
         if (orderId == null){
@@ -807,9 +991,31 @@ class OrderScreenViewModel @Inject constructor(
             _uiState.value = UiState.Success(ord)
          }
     }
+
+    private suspend fun fetchClients(){
+        if (storeId == null) return
+        try {
+            clientRepository.getClients(storeId).collect { _clients.value = it }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun changeClient(clientId: Long){
+        val order = _order.value?.fields ?: return
+        viewModelScope.launch {
+            try {
+                orderRepository.editOrder(order.copy(clientId = clientId))
+            } catch (e: Exception){
+                e.printStackTrace()
+            }
+        }
+    }
+
     init {
         viewModelScope.launch {
             launch { fetchOrderDetails() }
+            launch { fetchClients() }
         }
     }
 

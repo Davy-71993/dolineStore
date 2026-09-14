@@ -79,6 +79,10 @@ import com.example.doline.views.screens.store.clients.ClientScreen
 import com.example.doline.views.screens.store.clients.ClientScreenViewModel
 import com.example.doline.views.screens.store.clients.ClientsScreen
 import com.example.doline.views.screens.store.clients.ClientsScreenViewModel
+import com.example.doline.views.screens.store.suppliers.SupplierScreen
+import com.example.doline.views.screens.store.suppliers.SupplierScreenViewModel
+import com.example.doline.views.screens.store.suppliers.SuppliersScreen
+import com.example.doline.views.screens.store.suppliers.SuppliersScreenViewModel
 import com.example.doline.views.screens.store.pos.PosScreen
 import com.example.doline.views.screens.store.pos.PosScreenViewModel
 
@@ -381,6 +385,26 @@ fun StoreMain(storeId: Long?){
             ) { backStackEntry ->
                 val viewModel: ClientScreenViewModel = hiltViewModel(backStackEntry)
                 ClientScreen(navController = storeNavController, viewModel)
+            }
+
+            // Suppliers destinations
+            composable(
+                "{storeId}/suppliers",
+                listOf(navArgument("storeId") { type = NavType.LongType })
+            ) { backStackEntry ->
+                val viewModel: SuppliersScreenViewModel = hiltViewModel(backStackEntry)
+                SuppliersScreen(navController = storeNavController, viewModel)
+            }
+
+            composable(
+                "{storeId}/suppliers/{supplierId}",
+                listOf(
+                    navArgument("storeId") { type = NavType.LongType },
+                    navArgument("supplierId") { type = NavType.LongType }
+                )
+            ) { backStackEntry ->
+                val viewModel: SupplierScreenViewModel = hiltViewModel(backStackEntry)
+                SupplierScreen(navController = storeNavController, viewModel)
             }
 
             // Ai assistant (Asubo)

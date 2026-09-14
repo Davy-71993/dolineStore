@@ -1,4 +1,4 @@
-package com.example.doline.views.screens.store.clients
+package com.example.doline.views.screens.store.suppliers
 
 import android.content.Intent
 import android.net.Uri
@@ -6,6 +6,7 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,6 +24,9 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme.colorScheme
@@ -50,14 +54,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import com.example.doline.R
-import com.example.doline.capitalize
-import com.example.doline.data.ClientEntity
-import com.example.doline.data.ClientRepository
-import com.example.doline.data.Order
-import com.example.doline.data.OrderRepository
-import com.example.doline.data.Pricing
-import com.example.doline.data.SELECTED_CURRENCY
-import com.example.doline.orderStausColors
+import com.example.doline.data.ItemEntity
+import com.example.doline.data.ItemRepository
+import com.example.doline.data.SupplierEntity
+import com.example.doline.data.SupplierRepository
 import com.example.doline.timestampToDate
 import com.example.doline.ui.theme.IconSize
 import com.example.doline.ui.theme.Rounding
@@ -67,50 +67,61 @@ import com.example.doline.views.components.AppText
 import com.example.doline.views.components.ButtonType
 import com.example.doline.views.components.ErrorMessage
 import com.example.doline.views.components.LoadingScreen
-import com.example.doline.views.components.PriceTag
 import com.example.doline.views.components.Screen
 import com.example.doline.views.components.TextInputField
 import com.example.doline.views.components.TextType
-import com.example.doline.zeroed
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ClientScreen(navController: NavController, viewModel: ClientScreenViewModel) {
+fun SupplierScreen(navController: NavController, viewModel: SupplierScreenViewModel) {
     val uiState by viewModel.uiState.collectAsState()
-    val clientOrders by viewModel.clientOrders.collectAsState()
+    val suppliedItems by viewModel.suppliedItems.collectAsState()
+    val availableItems by viewModel.availableItems.collectAsState()
     val context = LocalContext.current
 
     var expanded by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
+    var addingItem by remember { mutableStateOf(false) }
 
-    if (uiState is ClientScreenUiState.Success) {
-        val client = (uiState as ClientScreenUiState.Success).client
+    AddSuppliedItemSheet(
+        open = addingItem,
+        availableItems = availableItems,
+        onClose = { addingItem = false },
+        onSelect = { itemId ->
+            viewModel.linkItem(itemId)
+            addingItem = false
+        }
+    )
 
-        EditClientSheet(
+    if (uiState is SupplierScreenUiState.Success) {
+        val supplier = (uiState as SupplierScreenUiState.Success).supplier
+
+        EditSupplierSheet(
             open = editing,
-            client = client,
+            supplier = supplier,
             onClose = { editing = false },
             onSave = { updated ->
-                viewModel.editClient(updated)
+                viewModel.editSupplier(updated)
                 editing = false
             }
         )
 
         if (deleting) {
             AlertDialog(
-                title = { AppText("Delete client!") },
+                title = { AppText("Delete supplier!") },
                 onDismissRequest = { deleting = false },
-                text = { AppText("Are you sure you want to delete ${client.name}? This can not be undone.") },
+                text = { AppText("Are you sure you want to delete ${supplier.name}? This can not be undone.") },
                 confirmButton = {
                     TextButton(onClick = {
-                        viewModel.deleteClient(client)
+                        viewModel.deleteSupplier(supplier)
                         deleting = false
                         navController.popBackStack()
                     }) {
@@ -129,7 +140,7 @@ fun ClientScreen(navController: NavController, viewModel: ClientScreenViewModel)
     Screen(
         topAppBar = {
             TopAppBar(
-                title = { AppText("Client", variant = TextType.Heading, maxLines = 1) },
+                title = { AppText("Supplier", variant = TextType.Heading, maxLines = 1) },
                 modifier = Modifier
                     .padding(vertical = 0.dp)
                     .shadow(10.dp),
@@ -152,8 +163,8 @@ fun ClientScreen(navController: NavController, viewModel: ClientScreenViewModel)
                     }
                 },
                 actions = {
-                    if (uiState is ClientScreenUiState.Success) {
-                        val client = (uiState as ClientScreenUiState.Success).client
+                    if (uiState is SupplierScreenUiState.Success) {
+                        val supplier = (uiState as SupplierScreenUiState.Success).supplier
                         IconButton(onClick = { expanded = true }) {
                             Icon(
                                 painter = painterResource(R.drawable.more),
@@ -168,7 +179,7 @@ fun ClientScreen(navController: NavController, viewModel: ClientScreenViewModel)
                             offset = DpOffset(10)
                         ) {
                             DropdownMenuItem(
-                                text = { AppText("Edit client") },
+                                text = { AppText("Edit supplier") },
                                 onClick = {
                                     editing = true
                                     expanded = false
@@ -182,17 +193,17 @@ fun ClientScreen(navController: NavController, viewModel: ClientScreenViewModel)
                                 }
                             )
                             DropdownMenuItem(
-                                text = { AppText("Message client") },
+                                text = { AppText("Message supplier") },
                                 onClick = {
                                     expanded = false
-                                    navController.navigate("store/${viewModel.storeId}/inbox/${client.id}")
+                                    navController.navigate("store/${viewModel.storeId}/inbox/${supplier.id}")
                                 },
                                 leadingIcon = {
                                     Icon(painter = painterResource(R.drawable.chat), contentDescription = null)
                                 }
                             )
                             DropdownMenuItem(
-                                text = { AppText("Delete client", color = colorScheme.error) },
+                                text = { AppText("Delete supplier", color = colorScheme.error) },
                                 onClick = {
                                     deleting = true
                                     expanded = false
@@ -209,13 +220,33 @@ fun ClientScreen(navController: NavController, viewModel: ClientScreenViewModel)
                     }
                 }
             )
+        },
+        floatingActionButton = {
+            if (uiState is SupplierScreenUiState.Success) {
+                FloatingActionButton(
+                    onClick = { addingItem = true },
+                    containerColor = colorScheme.primary,
+                    elevation = FloatingActionButtonDefaults.elevation(8.dp, 6.dp),
+                    shape = RoundedCornerShape(Rounding.FULL),
+                    modifier = Modifier
+                        .padding(Spacing.SM)
+                        .absoluteOffset(y = (-60).dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.plus),
+                        contentDescription = "Add item supplied",
+                        tint = colorScheme.onPrimary,
+                        modifier = Modifier.size(IconSize.BIG)
+                    )
+                }
+            }
         }
     ) {
         when (val state = uiState) {
-            is ClientScreenUiState.Loading -> LoadingScreen()
-            is ClientScreenUiState.Error -> ErrorMessage(message = state.message)
-            is ClientScreenUiState.Success -> {
-                val client = state.client
+            is SupplierScreenUiState.Loading -> LoadingScreen()
+            is SupplierScreenUiState.Error -> ErrorMessage(message = state.message)
+            is SupplierScreenUiState.Success -> {
+                val supplier = state.supplier
                 LazyColumn(
                     Modifier
                         .fillMaxWidth()
@@ -238,9 +269,9 @@ fun ClientScreen(navController: NavController, viewModel: ClientScreenViewModel)
                             )
                             Spacer(Modifier.width(Spacing.SM))
                             Column {
-                                AppText(client.name, variant = TextType.Heading)
+                                AppText(supplier.name, variant = TextType.Heading)
                                 AppText(
-                                    "Client since ${timestampToDate(client.createdAt)}",
+                                    "Supplier since ${timestampToDate(supplier.createdAt)}",
                                     variant = TextType.Small,
                                     color = colorScheme.onBackground.copy(.6f)
                                 )
@@ -248,11 +279,11 @@ fun ClientScreen(navController: NavController, viewModel: ClientScreenViewModel)
                         }
                     }
                     item {
-                        ClientDetailRow(
+                        SupplierDetailRow(
                             icon = R.drawable.call,
                             label = "Phone",
-                            value = client.phone ?: "Not provided",
-                            trailing = client.phone?.let { phone ->
+                            value = supplier.phone ?: "Not provided",
+                            trailing = supplier.phone?.let { phone ->
                                 {
                                     IconButton(onClick = {
                                         try {
@@ -275,27 +306,27 @@ fun ClientScreen(navController: NavController, viewModel: ClientScreenViewModel)
                         )
                     }
                     item {
-                        ClientDetailRow(icon = R.drawable.notes, label = "Address", value = client.address ?: "Not provided")
+                        SupplierDetailRow(icon = R.drawable.notes, label = "Address", value = supplier.address ?: "Not provided")
                     }
                     item {
                         AppText(
-                            "ORDERS",
+                            "ITEMS SUPPLIED",
                             variant = TextType.LabelSmall,
                             color = colorScheme.onBackground.copy(.6f)
                         )
                     }
-                    if (clientOrders.isEmpty()) {
+                    if (suppliedItems.isEmpty()) {
                         item {
                             AppText(
-                                "No orders placed yet.",
+                                "No items linked yet.",
                                 color = colorScheme.onBackground.copy(.6f)
                             )
                         }
                     } else {
-                        items(clientOrders, key = { it.fields.id }) { order ->
-                            ClientOrderRow(
-                                order = order,
-                                onClick = { navController.navigate("${viewModel.storeId}/orders/${order.fields.id}") }
+                        items(suppliedItems, key = { it.id }) { item ->
+                            SuppliedItemRow(
+                                item = item,
+                                onRemove = { viewModel.unlinkItem(item.id) }
                             )
                         }
                     }
@@ -307,7 +338,7 @@ fun ClientScreen(navController: NavController, viewModel: ClientScreenViewModel)
 }
 
 @Composable
-private fun ClientDetailRow(
+private fun SupplierDetailRow(
     icon: Int,
     label: String,
     value: String,
@@ -340,44 +371,23 @@ private fun ClientDetailRow(
     }
 }
 
-@RequiresApi(Build.VERSION_CODES.O)
 @Composable
-private fun ClientOrderRow(order: Order, onClick: () -> Unit) {
-    val orderAmount = order.items.sumOf { it.pricing.amount * it.fields.qty }
-    val (containerColor, textColor) = orderStausColors(order.fields.progress)
-    Column(
-        modifier = Modifier
+private fun SuppliedItemRow(item: ItemEntity, onRemove: () -> Unit) {
+    Row(
+        Modifier
             .fillMaxWidth()
             .background(colorScheme.surface, RoundedCornerShape(Rounding.SM))
-            .clickable { onClick() }
             .padding(Spacing.MD),
-        verticalArrangement = Arrangement.spacedBy(Spacing.XS)
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AppText("#${order.fields.id.zeroed()}", variant = TextType.Label)
-            AppText(
-                order.fields.progress.name.replace("_", " ").capitalize(),
-                variant = TextType.LabelSmall,
-                color = textColor,
-                modifier = Modifier
-                    .background(containerColor, RoundedCornerShape(Rounding.SM))
-                    .padding(Spacing.SM, Spacing.XXS)
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            PriceTag(Pricing(amount = orderAmount, currency = SELECTED_CURRENCY, itemId = 0))
-            AppText(
-                timestampToDate(order.fields.createdAt),
-                variant = TextType.Small,
-                color = colorScheme.onBackground.copy(.6f)
+        AppText(item.name, variant = TextType.Label)
+        IconButton(onClick = onRemove) {
+            Icon(
+                painter = painterResource(R.drawable.trash),
+                contentDescription = "Remove",
+                tint = colorScheme.error,
+                modifier = Modifier.size(IconSize.NORMAL)
             )
         }
     }
@@ -385,16 +395,78 @@ private fun ClientOrderRow(order: Order, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun EditClientSheet(
+private fun AddSuppliedItemSheet(
     open: Boolean,
-    client: ClientEntity,
+    availableItems: List<ItemEntity>,
     onClose: () -> Unit,
-    onSave: (ClientEntity) -> Unit
+    onSelect: (itemId: Long) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState()
-    var name by remember(client) { mutableStateOf(client.name) }
-    var phone by remember(client) { mutableStateOf(client.phone ?: "") }
-    var address by remember(client) { mutableStateOf(client.address ?: "") }
+
+    if (open) {
+        ModalBottomSheet(
+            onDismissRequest = onClose,
+            sheetState = sheetState
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(Spacing.MD, 0.dp),
+                verticalArrangement = Arrangement.spacedBy(Spacing.MD)
+            ) {
+                AppText("Add item supplied", variant = TextType.Heading)
+                if (availableItems.isEmpty()) {
+                    AppText(
+                        "All items are already linked to this supplier.",
+                        color = colorScheme.onBackground.copy(.6f)
+                    )
+                    Spacer(Modifier.height(20.dp))
+                } else {
+                    LazyColumn(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(320.dp)
+                    ) {
+                        items(availableItems, key = { it.id }) { item ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onSelect(item.id)
+                                    }
+                                    .padding(Spacing.MD, Spacing.SM),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AppText(item.name)
+                                Icon(
+                                    painter = painterResource(R.drawable.plus),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(IconSize.NORMAL),
+                                    tint = colorScheme.onBackground.copy(.6f)
+                                )
+                            }
+                            HorizontalDivider()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EditSupplierSheet(
+    open: Boolean,
+    supplier: SupplierEntity,
+    onClose: () -> Unit,
+    onSave: (SupplierEntity) -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState()
+    var name by remember(supplier) { mutableStateOf(supplier.name) }
+    var phone by remember(supplier) { mutableStateOf(supplier.phone ?: "") }
+    var address by remember(supplier) { mutableStateOf(supplier.address ?: "") }
     var error by remember { mutableStateOf("") }
 
     if (open) {
@@ -408,7 +480,7 @@ private fun EditClientSheet(
                     .padding(Spacing.MD, 0.dp),
                 verticalArrangement = Arrangement.spacedBy(Spacing.MD)
             ) {
-                AppText("Edit client", variant = TextType.Heading)
+                AppText("Edit supplier", variant = TextType.Heading)
                 if (error.isNotBlank()) {
                     ErrorMessage(error)
                 }
@@ -416,31 +488,31 @@ private fun EditClientSheet(
                     value = name,
                     onValueChange = { name = it; error = "" },
                     label = "Name",
-                    placeHolder = "Client's full name",
+                    placeHolder = "Supplier's name",
                 )
                 TextInputField(
                     value = phone,
                     onValueChange = { phone = it },
                     label = "Phone",
-                    placeHolder = "Client's phone number",
+                    placeHolder = "Supplier's phone number",
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 )
                 TextInputField(
                     value = address,
                     onValueChange = { address = it },
                     label = "Address",
-                    placeHolder = "Client's address",
+                    placeHolder = "Supplier's address",
                 )
                 Spacer(Modifier.height(10.dp))
                 AppButton(
                     text = "Save",
                     onClick = {
                         if (name.isBlank()) {
-                            error = "The client's name is required."
+                            error = "The supplier's name is required."
                             return@AppButton
                         }
                         onSave(
-                            client.copy(
+                            supplier.copy(
                                 name = name.trim(),
                                 phone = phone.trim().ifBlank { null },
                                 address = address.trim().ifBlank { null }
@@ -456,64 +528,96 @@ private fun EditClientSheet(
 }
 
 @HiltViewModel
-class ClientScreenViewModel @Inject constructor(
+class SupplierScreenViewModel @Inject constructor(
     savedState: SavedStateHandle,
-    private val clientRepository: ClientRepository,
-    private val orderRepository: OrderRepository
+    private val supplierRepository: SupplierRepository,
+    private val itemRepository: ItemRepository
 ) : ViewModel() {
     val storeId = savedState.get<Long>("storeId")
-    val clientId = savedState.get<Long>("clientId")
+    val supplierId = savedState.get<Long>("supplierId")
 
-    private val _uiState = MutableStateFlow<ClientScreenUiState>(ClientScreenUiState.Loading)
-    val uiState: StateFlow<ClientScreenUiState> = _uiState
+    private val _uiState = MutableStateFlow<SupplierScreenUiState>(SupplierScreenUiState.Loading)
+    val uiState: StateFlow<SupplierScreenUiState> = _uiState
 
-    private val _clientOrders = MutableStateFlow<List<Order>>(emptyList())
-    val clientOrders: StateFlow<List<Order>> = _clientOrders
+    private val _suppliedItems = MutableStateFlow<List<ItemEntity>>(emptyList())
+    val suppliedItems: StateFlow<List<ItemEntity>> = _suppliedItems
 
-    private suspend fun fetchClient() {
-        if (clientId == null) {
-            _uiState.value = ClientScreenUiState.Error("The client ID is undefined")
+    private val _availableItems = MutableStateFlow<List<ItemEntity>>(emptyList())
+    val availableItems: StateFlow<List<ItemEntity>> = _availableItems
+
+    private suspend fun fetchSupplier() {
+        if (supplierId == null) {
+            _uiState.value = SupplierScreenUiState.Error("The supplier ID is undefined")
             return
         }
-        clientRepository.getClientById(clientId).collect { client ->
-            _uiState.value = if (client == null) {
-                ClientScreenUiState.Error("Client not found")
+        supplierRepository.getSupplierById(supplierId).collect { supplier ->
+            _uiState.value = if (supplier == null) {
+                SupplierScreenUiState.Error("Supplier not found")
             } else {
-                ClientScreenUiState.Success(client)
+                SupplierScreenUiState.Success(supplier)
             }
         }
     }
 
-    private suspend fun fetchClientOrders() {
-        if (clientId == null) return
-        try {
-            orderRepository.getClientOrders(clientId).collect { _clientOrders.value = it }
-        } catch (e: Exception) {
-            e.printStackTrace()
+    private suspend fun observeSuppliedItems() {
+        if (supplierId == null) return
+        supplierRepository.getSupplierWithItems(supplierId).collect { supplierWithItems ->
+            _suppliedItems.value = supplierWithItems?.items ?: emptyList()
         }
+    }
+
+    private suspend fun observeAvailableItems() {
+        val storeId = storeId ?: return
+        combine(itemRepository.getAllItems(storeId), _suppliedItems) { items, supplied ->
+            val suppliedIds = supplied.map { it.id }.toSet()
+            items.map { it.item }.filter { it.id !in suppliedIds }
+        }.collect { _availableItems.value = it }
     }
 
     init {
         viewModelScope.launch {
-            launch { fetchClient() }
-            launch { fetchClientOrders() }
+            launch { fetchSupplier() }
+            launch { observeSuppliedItems() }
+            launch { observeAvailableItems() }
         }
     }
 
-    fun editClient(client: ClientEntity) {
+    fun editSupplier(supplier: SupplierEntity) {
         viewModelScope.launch {
             try {
-                clientRepository.editClient(client)
+                supplierRepository.editSupplier(supplier)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
     }
 
-    fun deleteClient(client: ClientEntity) {
+    fun deleteSupplier(supplier: SupplierEntity) {
         viewModelScope.launch {
             try {
-                clientRepository.deleteClient(client)
+                supplierRepository.deleteSupplier(supplier)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun linkItem(itemId: Long) {
+        val supplierId = supplierId ?: return
+        viewModelScope.launch {
+            try {
+                supplierRepository.linkItemToSupplier(itemId, supplierId)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun unlinkItem(itemId: Long) {
+        val supplierId = supplierId ?: return
+        viewModelScope.launch {
+            try {
+                supplierRepository.unlinkItemFromSupplier(itemId, supplierId)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -521,8 +625,8 @@ class ClientScreenViewModel @Inject constructor(
     }
 }
 
-sealed class ClientScreenUiState {
-    data object Loading : ClientScreenUiState()
-    data class Success(val client: ClientEntity) : ClientScreenUiState()
-    data class Error(val message: String) : ClientScreenUiState()
+sealed class SupplierScreenUiState {
+    data object Loading : SupplierScreenUiState()
+    data class Success(val supplier: SupplierEntity) : SupplierScreenUiState()
+    data class Error(val message: String) : SupplierScreenUiState()
 }
