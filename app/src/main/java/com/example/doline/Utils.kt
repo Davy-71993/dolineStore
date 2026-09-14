@@ -295,7 +295,7 @@ fun orderStausColors(status: OrderProgress): OrderStatusBtnColors{
         OrderProgress.DRAFT -> {
             OrderStatusBtnColors(container = slateContainer, text = onSlateContainer)
         }
-        OrderProgress.CANCELLED, OrderProgress.DELETED-> {
+        OrderProgress.CANCELLED -> {
             OrderStatusBtnColors(container = colorScheme.errorContainer, text = colorScheme.error)
         }
     }

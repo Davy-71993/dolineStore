@@ -298,6 +298,7 @@ data class OrderEntity(
     val updatedAt: Long = System.currentTimeMillis(),
     val clientId: Long? = null,
     val staffId: Long? = null,
+    val deletedAt: Long? = null,
 )
 
 @Entity("order_items")

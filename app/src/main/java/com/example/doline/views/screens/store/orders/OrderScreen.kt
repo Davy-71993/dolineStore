@@ -87,6 +87,7 @@ import javax.inject.Inject
 @Composable
 fun OrderScreen(navController: NavController, viewModel: OrderScreenViewModel){
     val orderId = viewModel.orderId
+    val storeId = viewModel.storeId
     val uiState by viewModel.uiState.collectAsState()
     val order by viewModel.order.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
@@ -283,17 +284,17 @@ fun OrderScreen(navController: NavController, viewModel: OrderScreenViewModel){
                                     }
                                 )
                             }
-                            DropdownMenuItem(
-                                text = { AppText("View client") },
-                                onClick = {
-                                    expanded = false
-                                },
-                                leadingIcon = {
-                                    Icon(painter = painterResource(R.drawable.user), modifier = Modifier.size(
-                                        IconSize.NORMAL), contentDescription = null)
-                                }
-                            )
-                            HorizontalDivider()
+                            if (order.client != null){
+                                DropdownMenuItem(
+                                    text = { AppText("View client") },
+                                    onClick = {
+                                        navController.navigate("$storeId/clients/${order.client.id}")
+                                    },
+                                    leadingIcon = {
+                                        Icon(painter = painterResource(R.drawable.user), modifier = Modifier.size(IconSize.NORMAL), contentDescription = null)
+                                    }
+                                )
+                            }
 
                             if (progress == OrderProgress.PENDING || progress == OrderProgress.DRAFT || progress == OrderProgress.READY){
                                 DropdownMenuItem(
@@ -318,6 +319,7 @@ fun OrderScreen(navController: NavController, viewModel: OrderScreenViewModel){
                             }
                             if (progress == OrderProgress.PENDING
                                 || progress == OrderProgress.DRAFT
+                                || progress == OrderProgress.RETURNED
                                 || progress == OrderProgress.READY
                                 ||  progress == OrderProgress.CANCELLED){
                                 DropdownMenuItem(
@@ -780,6 +782,7 @@ class OrderScreenViewModel @Inject constructor(
     private val orderRepository: OrderRepository
 ): ViewModel(){
     val orderId = savedState.get<Long>("orderId")
+    val storeId = savedState.get<Long>("storeId")
     private  val _uiState = MutableStateFlow<UiState>(UiState.Loading)
     private val _order = MutableStateFlow<Order?>(null)
     private val _errorMessage = MutableStateFlow("")

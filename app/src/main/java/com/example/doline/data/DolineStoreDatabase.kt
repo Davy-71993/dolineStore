@@ -26,7 +26,7 @@ import androidx.room.TypeConverters
         ClientEntity::class,
         StaffEntity::class,
         CreditPayment::class],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 @TypeConverters(

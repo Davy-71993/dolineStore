@@ -177,7 +177,7 @@ interface OrderDao {
     suspend fun insert(orderEntity: OrderEntity) : Long
 
     @Transaction
-    @Query("SELECT * FROM orders WHERE storeId = :storeId")
+    @Query("SELECT * FROM orders WHERE storeId = :storeId AND deletedAt IS NULL")
     fun getStoreOrders(storeId: Long) : Flow<List<Order>>
 
     @Transaction
@@ -205,8 +205,8 @@ interface OrderDao {
         insertPayment(payment)
     }
 
-    @Query("""UPDATE orders SET progress = "DELETED" WHERE id = :orderId""")
-    suspend fun delete(orderId: Long)
+    @Query("""UPDATE orders SET deletedAt = :deletedAt WHERE id = :orderId""")
+    suspend fun delete(orderId: Long, deletedAt: Long = System.currentTimeMillis())
 
     @Query("""UPDATE order_items SET returned = :returned WHERE id = :id""")
     suspend fun returnOrderItem(id: Long, returned: Double)

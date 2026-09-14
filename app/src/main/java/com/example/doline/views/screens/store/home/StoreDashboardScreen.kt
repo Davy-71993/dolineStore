@@ -258,6 +258,19 @@ fun StoreDashBoardScreen(
                                     )
                                 }
                             )
+                            NavigationDrawerItem(
+                                label = { AppText("Clients") },
+                                onClick = { navController.navigate("$storeId/clients"){popUpTo("$storeId/clients")}
+                                    scope.launch { drawerState.close() }},
+                                selected = currentRoute == "$storeId/clients",
+                                icon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.user),
+                                        contentDescription = "Clients",
+                                        modifier = Modifier.size(IconSize.BIG)
+                                    )
+                                }
+                            )
                             HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.onBackground)
                             NavigationDrawerItem(
                                 label = { AppText("Settings") },

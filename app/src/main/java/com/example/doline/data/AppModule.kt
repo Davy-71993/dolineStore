@@ -80,7 +80,8 @@ object AppModule {
             DolineStoreDatabase::class.java,
             "doline_database"
         )
-            .fallbackToDestructiveMigration(false) // Only for development
+            .addMigrations(*ALL_MIGRATIONS)
+            .fallbackToDestructiveMigration(false) // Safety net only for versions with no migration path above
             .build()
     }
 

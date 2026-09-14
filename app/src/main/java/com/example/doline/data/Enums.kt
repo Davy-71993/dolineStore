@@ -29,7 +29,7 @@ enum class StoreCategory {
 }
 
 enum class OrderProgress {
-    PENDING, READY, SHIPPING, COMPLETED, RETURNED, DRAFT, CANCELLED, DELETED
+    PENDING, READY, SHIPPING, COMPLETED, RETURNED, DRAFT, CANCELLED
 }
 
 enum class OrderStatus {
