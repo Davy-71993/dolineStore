@@ -29,6 +29,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -60,7 +62,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -75,6 +77,7 @@ import com.example.doline.data.OrderRepository
 import com.example.doline.data.Pricing
 import com.example.doline.data.SELECTED_CURRENCY
 import com.example.doline.data.Store
+import com.example.doline.data.StaffSessionManager
 import com.example.doline.data.StoreRepository
 import com.example.doline.orderStausColors
 import com.example.doline.timestampToDate
@@ -119,6 +122,7 @@ fun StoreDashBoardScreen(
     val scope = rememberCoroutineScope()
     val currentRoute = navController.currentDestination?.route
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+    var accountMenuExpanded by remember { mutableStateOf(false) }
 
     val uiState by viewModel.uiState.collectAsState()
     val stats by viewModel.dashboardStats.collectAsState()
@@ -337,6 +341,63 @@ fun StoreDashBoardScreen(
                                         contentDescription = "Menu",
                                         modifier = Modifier.size(IconSize.NORMAL)
                                     )
+                                }
+                            },
+                            actions = {
+                                Box {
+                                    IconButton(onClick = { accountMenuExpanded = true }) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.user),
+                                            contentDescription = "Account",
+                                            modifier = Modifier.size(IconSize.NORMAL)
+                                        )
+                                    }
+                                    DropdownMenu(
+                                        expanded = accountMenuExpanded,
+                                        onDismissRequest = { accountMenuExpanded = false }
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(horizontal = Spacing.MD, vertical = Spacing.XS)
+                                        ) {
+                                            AppText(viewModel.staffName ?: "Unknown staff", variant = TextType.Label)
+                                            viewModel.staffRole?.takeIf { it.isNotBlank() }?.let {
+                                                AppText(
+                                                    it,
+                                                    variant = TextType.Small,
+                                                    color = MaterialTheme.colorScheme.onBackground.copy(.6f)
+                                                )
+                                            }
+                                        }
+                                        HorizontalDivider()
+                                        DropdownMenuItem(
+                                            text = { AppText("Lock") },
+                                            leadingIcon = {
+                                                Icon(
+                                                    painter = painterResource(R.drawable.lock),
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(IconSize.NORMAL)
+                                                )
+                                            },
+                                            onClick = {
+                                                accountMenuExpanded = false
+                                                viewModel.lock()
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { AppText("Change pass key") },
+                                            leadingIcon = {
+                                                Icon(
+                                                    painter = painterResource(R.drawable.edit),
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(IconSize.NORMAL)
+                                                )
+                                            },
+                                            onClick = {
+                                                accountMenuExpanded = false
+                                                navController.navigate("store/$storeId/settings/change_passkey")
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         )
@@ -664,7 +725,7 @@ private fun RecentOrderCard(order: Order, onClick: () -> Unit) {
             .clickable { onClick() },
         verticalArrangement = Arrangement.spacedBy(Spacing.XS)
     ) {
-        AppText(order.client?.name ?: "Walk-in customer", variant = TextType.Label)
+        AppText(order.client?.profile?.fullNames ?: "Walk-in customer", variant = TextType.Label)
         PriceTag(
             Pricing(amount = orderAmount, currency = SELECTED_CURRENCY, itemId = 0),
             textColor = MaterialTheme.colorScheme.primary,
@@ -732,9 +793,12 @@ class ScreenViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val storeRepository: StoreRepository,
     private val orderRepository: OrderRepository,
-    private val clientRepository: ClientRepository
+    private val clientRepository: ClientRepository,
+    private val sessionManager: StaffSessionManager
 ): ViewModel(){
     val storeId = savedStateHandle.get<Long>("storeId")
+    val staffName: String? = sessionManager.session.value?.staff?.profile?.fullNames
+    val staffRole: String? = sessionManager.session.value?.staff?.staff?.role
     private val _uiState = MutableStateFlow<UiState>(UiState.Loading)
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
@@ -742,6 +806,9 @@ class ScreenViewModel @Inject constructor(
     val dashboardStats: StateFlow<DashboardStats> = _dashboardStats.asStateFlow()
 
     private var dashboardObserved = false
+
+    // Clocks the current staff out immediately; StoreMain reacts by showing the lock screen.
+    fun lock() = sessionManager.logout()
 
     fun getStore(storeId: Long?){
         if (storeId == null){
@@ -772,7 +839,7 @@ class ScreenViewModel @Inject constructor(
                 ) { orders, clients ->
                     val zone = ZoneId.systemDefault()
                     val weekAgo = LocalDate.now(zone).minusDays(7).atStartOfDay(zone).toInstant().toEpochMilli()
-                    val newClientsThisWeek = clients.count { it.createdAt >= weekAgo }
+                    val newClientsThisWeek = clients.count { it.client.createdAt >= weekAgo }
                     buildDashboardStats(orders, clients.size, newClientsThisWeek)
                 }.collect {
                     _dashboardStats.value = it

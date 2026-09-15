@@ -51,12 +51,13 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import com.example.doline.R
 import com.example.doline.capitalize
-import com.example.doline.data.ClientEntity
 import com.example.doline.data.ClientRepository
+import com.example.doline.data.ClientWithProfile
 import com.example.doline.data.Order
 import com.example.doline.data.OrderRepository
 import com.example.doline.data.Pricing
 import com.example.doline.data.SELECTED_CURRENCY
+import com.example.doline.data.UserProfileRepository
 import com.example.doline.orderStausColors
 import com.example.doline.timestampToDate
 import com.example.doline.ui.theme.IconSize
@@ -97,8 +98,8 @@ fun ClientScreen(navController: NavController, viewModel: ClientScreenViewModel)
             open = editing,
             client = client,
             onClose = { editing = false },
-            onSave = { updated ->
-                viewModel.editClient(updated)
+            onSave = { name, phone, address ->
+                viewModel.editClient(name, phone, address)
                 editing = false
             }
         )
@@ -107,7 +108,7 @@ fun ClientScreen(navController: NavController, viewModel: ClientScreenViewModel)
             AlertDialog(
                 title = { AppText("Delete client!") },
                 onDismissRequest = { deleting = false },
-                text = { AppText("Are you sure you want to delete ${client.name}? This can not be undone.") },
+                text = { AppText("Are you sure you want to delete ${client.profile.fullNames}? This can not be undone.") },
                 confirmButton = {
                     TextButton(onClick = {
                         viewModel.deleteClient(client)
@@ -185,7 +186,7 @@ fun ClientScreen(navController: NavController, viewModel: ClientScreenViewModel)
                                 text = { AppText("Message client") },
                                 onClick = {
                                     expanded = false
-                                    navController.navigate("store/${viewModel.storeId}/inbox/${client.id}")
+                                    navController.navigate("store/${viewModel.storeId}/inbox/${client.client.id}")
                                 },
                                 leadingIcon = {
                                     Icon(painter = painterResource(R.drawable.chat), contentDescription = null)
@@ -238,9 +239,9 @@ fun ClientScreen(navController: NavController, viewModel: ClientScreenViewModel)
                             )
                             Spacer(Modifier.width(Spacing.SM))
                             Column {
-                                AppText(client.name, variant = TextType.Heading)
+                                AppText(client.profile.fullNames ?: "Unnamed client", variant = TextType.Heading)
                                 AppText(
-                                    "Client since ${timestampToDate(client.createdAt)}",
+                                    "Client since ${timestampToDate(client.client.createdAt)}",
                                     variant = TextType.Small,
                                     color = colorScheme.onBackground.copy(.6f)
                                 )
@@ -251,8 +252,8 @@ fun ClientScreen(navController: NavController, viewModel: ClientScreenViewModel)
                         ClientDetailRow(
                             icon = R.drawable.call,
                             label = "Phone",
-                            value = client.phone ?: "Not provided",
-                            trailing = client.phone?.let { phone ->
+                            value = client.profile.phone ?: "Not provided",
+                            trailing = client.profile.phone?.let { phone ->
                                 {
                                     IconButton(onClick = {
                                         try {
@@ -275,7 +276,7 @@ fun ClientScreen(navController: NavController, viewModel: ClientScreenViewModel)
                         )
                     }
                     item {
-                        ClientDetailRow(icon = R.drawable.notes, label = "Address", value = client.address ?: "Not provided")
+                        ClientDetailRow(icon = R.drawable.notes, label = "Address", value = client.profile.defaultAddress ?: "Not provided")
                     }
                     item {
                         AppText(
@@ -387,14 +388,14 @@ private fun ClientOrderRow(order: Order, onClick: () -> Unit) {
 @Composable
 private fun EditClientSheet(
     open: Boolean,
-    client: ClientEntity,
+    client: ClientWithProfile,
     onClose: () -> Unit,
-    onSave: (ClientEntity) -> Unit
+    onSave: (name: String, phone: String?, address: String?) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState()
-    var name by remember(client) { mutableStateOf(client.name) }
-    var phone by remember(client) { mutableStateOf(client.phone ?: "") }
-    var address by remember(client) { mutableStateOf(client.address ?: "") }
+    var name by remember(client) { mutableStateOf(client.profile.fullNames ?: "") }
+    var phone by remember(client) { mutableStateOf(client.profile.phone ?: "") }
+    var address by remember(client) { mutableStateOf(client.profile.defaultAddress ?: "") }
     var error by remember { mutableStateOf("") }
 
     if (open) {
@@ -439,13 +440,7 @@ private fun EditClientSheet(
                             error = "The client's name is required."
                             return@AppButton
                         }
-                        onSave(
-                            client.copy(
-                                name = name.trim(),
-                                phone = phone.trim().ifBlank { null },
-                                address = address.trim().ifBlank { null }
-                            )
-                        )
+                        onSave(name.trim(), phone.trim().ifBlank { null }, address.trim().ifBlank { null })
                     },
                     type = ButtonType.Primary
                 )
@@ -459,6 +454,7 @@ private fun EditClientSheet(
 class ClientScreenViewModel @Inject constructor(
     savedState: SavedStateHandle,
     private val clientRepository: ClientRepository,
+    private val profileRepository: UserProfileRepository,
     private val orderRepository: OrderRepository
 ) : ViewModel() {
     val storeId = savedState.get<Long>("storeId")
@@ -500,20 +496,23 @@ class ClientScreenViewModel @Inject constructor(
         }
     }
 
-    fun editClient(client: ClientEntity) {
+    fun editClient(name: String, phone: String?, address: String?) {
+        val current = (_uiState.value as? ClientScreenUiState.Success)?.client ?: return
         viewModelScope.launch {
             try {
-                clientRepository.editClient(client)
+                profileRepository.updateProfile(
+                    current.profile.copy(fullNames = name, phone = phone, defaultAddress = address)
+                )
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
     }
 
-    fun deleteClient(client: ClientEntity) {
+    fun deleteClient(client: ClientWithProfile) {
         viewModelScope.launch {
             try {
-                clientRepository.deleteClient(client)
+                clientRepository.deleteClient(client.client)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -523,6 +522,6 @@ class ClientScreenViewModel @Inject constructor(
 
 sealed class ClientScreenUiState {
     data object Loading : ClientScreenUiState()
-    data class Success(val client: ClientEntity) : ClientScreenUiState()
+    data class Success(val client: ClientWithProfile) : ClientScreenUiState()
     data class Error(val message: String) : ClientScreenUiState()
 }

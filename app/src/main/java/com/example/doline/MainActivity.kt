@@ -4,6 +4,10 @@ import android.app.Application
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.hilt.work.HiltWorkerFactory
+import androidx.work.Configuration
+import com.example.doline.data.SyncScheduler
+import javax.inject.Inject
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -102,7 +106,21 @@ fun AppNavigation() {
 }
 
 @HiltAndroidApp
-class Doline : Application()
+class Doline : Application(), Configuration.Provider {
+
+    @Inject
+    lateinit var workerFactory: HiltWorkerFactory
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setWorkerFactory(workerFactory)
+            .build()
+
+    override fun onCreate() {
+        super.onCreate()
+        SyncScheduler.schedulePeriodic(this)
+    }
+}
 
 @Composable
 fun SampleScree(){

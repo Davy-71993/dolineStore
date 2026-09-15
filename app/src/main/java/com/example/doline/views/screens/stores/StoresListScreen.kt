@@ -39,12 +39,13 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavHostController
 import com.example.doline.DeviceConfiguration
 import com.example.doline.R
+import com.example.doline.data.AuthRepository
 import com.example.doline.data.Store
 import com.example.doline.data.StoreRepository
 import com.example.doline.data.UserProfile
@@ -59,6 +60,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
@@ -160,11 +162,12 @@ fun StoresListScreen(navController: NavHostController, viewModel: StoreListViewM
 @HiltViewModel
 class StoreListViewModel @Inject constructor(
     storeRepository: StoreRepository,
-    profileRepository: UserProfileRepository
+    profileRepository: UserProfileRepository,
+    authRepository: AuthRepository
 ) : ViewModel() {
     val screenState: StateFlow<StoresListScreenUiState> = combine(
         storeRepository.getAllStores(),
-        profileRepository.getProfile()
+        authRepository.currentUser?.id?.let { profileRepository.getProfileByUserId(it) } ?: flowOf(null)
     ) { stores, profile ->
         if(profile == null){
             StoresListScreenUiState.Error("Error: The profile is null")

@@ -8,7 +8,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -19,7 +19,9 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import io.github.jan.supabase.auth.status.SessionStatus
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
@@ -66,17 +68,19 @@ class SplashScreenViewModel @Inject constructor(
     authRepository: AuthRepository,
     profileRepository: UserProfileRepository
 ) : ViewModel() {
-    val splashState: StateFlow<SplashState> = combine(
-        authRepository.sessionStatus,
-        profileRepository.getProfile()
-    ) { sessionStatus, profile ->
-        when {
-            profile != null -> SplashState.HasProfile
-            sessionStatus is SessionStatus.Initializing -> SplashState.Loading
-            sessionStatus is SessionStatus.Authenticated -> SplashState.AuthenticatedNoProfile
-            else -> SplashState.NotAuthenticated
-        }
-    }.stateIn(
+    val splashState: StateFlow<SplashState> = authRepository.sessionStatus
+        .flatMapLatest { sessionStatus ->
+            val userId = authRepository.currentUser?.id
+            val profileFlow = userId?.let { profileRepository.getProfileByUserId(it) } ?: flowOf(null)
+            profileFlow.map { profile ->
+                when {
+                    profile != null -> SplashState.HasProfile
+                    sessionStatus is SessionStatus.Initializing -> SplashState.Loading
+                    sessionStatus is SessionStatus.Authenticated -> SplashState.AuthenticatedNoProfile
+                    else -> SplashState.NotAuthenticated
+                }
+            }
+        }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = SplashState.Loading

@@ -56,8 +56,9 @@ import androidx.navigation.NavController
 import com.example.doline.R
 import com.example.doline.data.ItemEntity
 import com.example.doline.data.ItemRepository
-import com.example.doline.data.SupplierEntity
 import com.example.doline.data.SupplierRepository
+import com.example.doline.data.SupplierWithProfile
+import com.example.doline.data.UserProfileRepository
 import com.example.doline.timestampToDate
 import com.example.doline.ui.theme.IconSize
 import com.example.doline.ui.theme.Rounding
@@ -108,8 +109,8 @@ fun SupplierScreen(navController: NavController, viewModel: SupplierScreenViewMo
             open = editing,
             supplier = supplier,
             onClose = { editing = false },
-            onSave = { updated ->
-                viewModel.editSupplier(updated)
+            onSave = { name, phone, address ->
+                viewModel.editSupplier(name, phone, address)
                 editing = false
             }
         )
@@ -118,7 +119,7 @@ fun SupplierScreen(navController: NavController, viewModel: SupplierScreenViewMo
             AlertDialog(
                 title = { AppText("Delete supplier!") },
                 onDismissRequest = { deleting = false },
-                text = { AppText("Are you sure you want to delete ${supplier.name}? This can not be undone.") },
+                text = { AppText("Are you sure you want to delete ${supplier.profile.fullNames}? This can not be undone.") },
                 confirmButton = {
                     TextButton(onClick = {
                         viewModel.deleteSupplier(supplier)
@@ -196,7 +197,7 @@ fun SupplierScreen(navController: NavController, viewModel: SupplierScreenViewMo
                                 text = { AppText("Message supplier") },
                                 onClick = {
                                     expanded = false
-                                    navController.navigate("store/${viewModel.storeId}/inbox/${supplier.id}")
+                                    navController.navigate("store/${viewModel.storeId}/inbox/${supplier.supplier.id}")
                                 },
                                 leadingIcon = {
                                     Icon(painter = painterResource(R.drawable.chat), contentDescription = null)
@@ -269,9 +270,9 @@ fun SupplierScreen(navController: NavController, viewModel: SupplierScreenViewMo
                             )
                             Spacer(Modifier.width(Spacing.SM))
                             Column {
-                                AppText(supplier.name, variant = TextType.Heading)
+                                AppText(supplier.profile.fullNames ?: "Unnamed supplier", variant = TextType.Heading)
                                 AppText(
-                                    "Supplier since ${timestampToDate(supplier.createdAt)}",
+                                    "Supplier since ${timestampToDate(supplier.supplier.createdAt)}",
                                     variant = TextType.Small,
                                     color = colorScheme.onBackground.copy(.6f)
                                 )
@@ -282,8 +283,8 @@ fun SupplierScreen(navController: NavController, viewModel: SupplierScreenViewMo
                         SupplierDetailRow(
                             icon = R.drawable.call,
                             label = "Phone",
-                            value = supplier.phone ?: "Not provided",
-                            trailing = supplier.phone?.let { phone ->
+                            value = supplier.profile.phone ?: "Not provided",
+                            trailing = supplier.profile.phone?.let { phone ->
                                 {
                                     IconButton(onClick = {
                                         try {
@@ -306,7 +307,7 @@ fun SupplierScreen(navController: NavController, viewModel: SupplierScreenViewMo
                         )
                     }
                     item {
-                        SupplierDetailRow(icon = R.drawable.notes, label = "Address", value = supplier.address ?: "Not provided")
+                        SupplierDetailRow(icon = R.drawable.notes, label = "Address", value = supplier.profile.defaultAddress ?: "Not provided")
                     }
                     item {
                         AppText(
@@ -459,14 +460,14 @@ private fun AddSuppliedItemSheet(
 @Composable
 private fun EditSupplierSheet(
     open: Boolean,
-    supplier: SupplierEntity,
+    supplier: SupplierWithProfile,
     onClose: () -> Unit,
-    onSave: (SupplierEntity) -> Unit
+    onSave: (name: String, phone: String?, address: String?) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState()
-    var name by remember(supplier) { mutableStateOf(supplier.name) }
-    var phone by remember(supplier) { mutableStateOf(supplier.phone ?: "") }
-    var address by remember(supplier) { mutableStateOf(supplier.address ?: "") }
+    var name by remember(supplier) { mutableStateOf(supplier.profile.fullNames ?: "") }
+    var phone by remember(supplier) { mutableStateOf(supplier.profile.phone ?: "") }
+    var address by remember(supplier) { mutableStateOf(supplier.profile.defaultAddress ?: "") }
     var error by remember { mutableStateOf("") }
 
     if (open) {
@@ -511,13 +512,7 @@ private fun EditSupplierSheet(
                             error = "The supplier's name is required."
                             return@AppButton
                         }
-                        onSave(
-                            supplier.copy(
-                                name = name.trim(),
-                                phone = phone.trim().ifBlank { null },
-                                address = address.trim().ifBlank { null }
-                            )
-                        )
+                        onSave(name.trim(), phone.trim().ifBlank { null }, address.trim().ifBlank { null })
                     },
                     type = ButtonType.Primary
                 )
@@ -531,6 +526,7 @@ private fun EditSupplierSheet(
 class SupplierScreenViewModel @Inject constructor(
     savedState: SavedStateHandle,
     private val supplierRepository: SupplierRepository,
+    private val profileRepository: UserProfileRepository,
     private val itemRepository: ItemRepository
 ) : ViewModel() {
     val storeId = savedState.get<Long>("storeId")
@@ -582,20 +578,23 @@ class SupplierScreenViewModel @Inject constructor(
         }
     }
 
-    fun editSupplier(supplier: SupplierEntity) {
+    fun editSupplier(name: String, phone: String?, address: String?) {
+        val current = (_uiState.value as? SupplierScreenUiState.Success)?.supplier ?: return
         viewModelScope.launch {
             try {
-                supplierRepository.editSupplier(supplier)
+                profileRepository.updateProfile(
+                    current.profile.copy(fullNames = name, phone = phone, defaultAddress = address)
+                )
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
     }
 
-    fun deleteSupplier(supplier: SupplierEntity) {
+    fun deleteSupplier(supplier: SupplierWithProfile) {
         viewModelScope.launch {
             try {
-                supplierRepository.deleteSupplier(supplier)
+                supplierRepository.deleteSupplier(supplier.supplier)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -627,6 +626,6 @@ class SupplierScreenViewModel @Inject constructor(
 
 sealed class SupplierScreenUiState {
     data object Loading : SupplierScreenUiState()
-    data class Success(val supplier: SupplierEntity) : SupplierScreenUiState()
+    data class Success(val supplier: SupplierWithProfile) : SupplierScreenUiState()
     data class Error(val message: String) : SupplierScreenUiState()
 }

@@ -85,6 +85,22 @@ class CurrencyConverter {
     fun toCurrency(value: String): Currency = Currency.valueOf(value)
 }
 
+class SyncEntityTypeConverter {
+    @TypeConverter
+    fun fromSyncEntityType(type: SyncEntityType): String = type.name
+
+    @TypeConverter
+    fun toSyncEntityType(value: String): SyncEntityType = SyncEntityType.valueOf(value)
+}
+
+class SyncOperationConverter {
+    @TypeConverter
+    fun fromSyncOperation(operation: SyncOperation): String = operation.name
+
+    @TypeConverter
+    fun toSyncOperation(value: String): SyncOperation = SyncOperation.valueOf(value)
+}
+
 class SpecsConverter {
     private val gson = Gson()
 

@@ -183,7 +183,25 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideUserProfileRepository(dao: UserProfileDao, supabaseClient: SupabaseClient) = UserProfileRepository(dao, supabaseClient)
+    fun provideSyncQueueDao(database: DolineStoreDatabase): SyncQueueDao {
+        return database.syncQueueDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideSyncStateDao(database: DolineStoreDatabase): SyncStateDao {
+        return database.syncStateDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideUserProfileRepository(
+        dao: UserProfileDao,
+        supabaseClient: SupabaseClient,
+        syncQueueDao: SyncQueueDao,
+        syncStateDao: SyncStateDao,
+        @ApplicationContext context: Context
+    ) = UserProfileRepository(dao, supabaseClient, syncQueueDao, syncStateDao, context)
 
     @Provides
     @Singleton
@@ -191,7 +209,13 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideStoreRepository(dao: StoreDao, supabaseClient: SupabaseClient) = StoreRepository(dao, supabaseClient)
+    fun provideStoreRepository(
+        dao: StoreDao,
+        supabaseClient: SupabaseClient,
+        syncQueueDao: SyncQueueDao,
+        syncStateDao: SyncStateDao,
+        @ApplicationContext context: Context
+    ) = StoreRepository(dao, supabaseClient, syncQueueDao, syncStateDao, context)
 
     @Provides
     @Singleton
@@ -227,15 +251,15 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideClientRepository(dao: ClientDao) = ClientRepository(dao)
+    fun provideClientRepository(dao: ClientDao, profileDao: UserProfileDao) = ClientRepository(dao, profileDao)
 
     @Provides
     @Singleton
-    fun provideStaffRepository(dao: StaffDao) = StaffRepository(dao)
+    fun provideStaffRepository(dao: StaffDao, profileDao: UserProfileDao) = StaffRepository(dao, profileDao)
 
     @Provides
     @Singleton
-    fun provideSupplierRepository(dao: SupplierDao) = SupplierRepository(dao)
+    fun provideSupplierRepository(dao: SupplierDao, profileDao: UserProfileDao) = SupplierRepository(dao, profileDao)
 
     @Provides
     @Singleton

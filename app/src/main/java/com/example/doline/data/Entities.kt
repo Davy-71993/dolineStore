@@ -1,5 +1,6 @@
 package com.example.doline.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
@@ -12,14 +13,19 @@ import kotlinx.serialization.Serializable
 @Serializable
 @Entity(tableName = "profiles")
 data class UserProfile(
-    @PrimaryKey val userId: String,
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    // Set only for the device owner's profile, synced from Supabase; local-only otherwise.
+    val userId: String? = null,
     val email: String? = null,
     val username: String? = null,
     val fullNames: String? = null,
     val phone: String? = null,
     val avatarUrl: String? = null,
     val about: String? = null,
-    val defaultAddress: String? = null
+    val defaultAddress: String? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+    val deletedAt: Long? = null
 )
 
 @Serializable
@@ -36,7 +42,9 @@ data class Store(
     val status: String? = null,
     val logo: String? = null,
     val slug: String? = null,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+    val deletedAt: Long? = null
 )
 
 data class StoreWithItems(
@@ -347,14 +355,14 @@ data class Order(
         entityColumn = "id",
         entity = ClientEntity::class
     )
-    val client: ClientEntity?,
+    val client: ClientWithProfile?,
 
     @Relation(
         parentColumn = "staffId",
         entityColumn = "id",
         entity = StaffEntity::class
     )
-    val staff: StaffEntity?,
+    val staff: StaffWithProfile?,
 )
 
 data class OrderItem(
@@ -388,10 +396,14 @@ data class OrderItem(
 data class SupplierEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val storeId: Long,
-    val name: String,
-    val address: String? = null,
-    val phone: String? = null,
+    val profileId: Long,
     val createdAt: Long = System.currentTimeMillis()
+)
+
+data class SupplierWithProfile(
+    @Embedded val supplier: SupplierEntity,
+    @Relation(parentColumn = "profileId", entityColumn = "id")
+    val profile: UserProfile
 )
 
 @Entity(
@@ -433,6 +445,8 @@ data class ItemWithSuppliers(
 
 data class SupplierWithItems(
     @Embedded val fields: SupplierEntity,
+    @Relation(parentColumn = "profileId", entityColumn = "id")
+    val profile: UserProfile,
     @Relation(
         parentColumn = "id",
         entityColumn = "id",
@@ -449,19 +463,31 @@ data class SupplierWithItems(
 data class ClientEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val storeId: Long,
-    val name: String,
-    val address: String?,
-    val phone: String?,
+    val profileId: Long,
     val createdAt: Long = System.currentTimeMillis()
+)
+
+data class ClientWithProfile(
+    @Embedded val client: ClientEntity,
+    @Relation(parentColumn = "profileId", entityColumn = "id")
+    val profile: UserProfile
 )
 
 @Entity("staffs")
 data class StaffEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val storeId: Long,
-    val name: String,
     val role: String?,
+    @ColumnInfo(defaultValue = "''") val passKeyHash: String = "",
+    @ColumnInfo(defaultValue = "0") val isAdmin: Boolean = false,
+    val profileId: Long,
     val createdAt: Long = System.currentTimeMillis()
+)
+
+data class StaffWithProfile(
+    @Embedded val staff: StaffEntity,
+    @Relation(parentColumn = "profileId", entityColumn = "id")
+    val profile: UserProfile
 )
 
 @Entity("credit_payments")
@@ -470,6 +496,36 @@ data class CreditPayment(
     val orderId: Long,
     val amount: Double,
     val createdAt: Long = System.currentTimeMillis()
+)
+
+// Outbox of local mutations awaiting push to Supabase. entityType + localId is a polymorphic
+// reference (which table localId belongs to depends on entityType), so it can't carry a real
+// foreign key; integrity is enforced by whatever enqueues and drains these rows.
+@Entity("sync_queue")
+data class SyncQueueEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @param:TypeConverters(SyncEntityTypeConverter::class)
+    val entityType: SyncEntityType,
+    val localId: Long,
+    @param:TypeConverters(SyncOperationConverter::class)
+    val operation: SyncOperation,
+    // JSON snapshot of the row's syncable fields at enqueue time. Needed because by the time
+    // this is processed the local row may already be gone (DELETE) or changed again (UPDATE).
+    val payload: String? = null,
+    // Cloud-side id known at enqueue time (Store.cloudId, or UserProfile.userId), if any.
+    val cloudId: String? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val attempts: Int = 0,
+    val lastError: String? = null
+)
+
+// Per-entity-type pull watermark: only cloud rows updated after lastPulledAt are fetched.
+@Entity("sync_state")
+data class SyncStateEntity(
+    @PrimaryKey
+    @param:TypeConverters(SyncEntityTypeConverter::class)
+    val entityType: SyncEntityType,
+    val lastPulledAt: Long = 0L
 )
 
 

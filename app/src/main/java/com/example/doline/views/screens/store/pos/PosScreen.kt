@@ -73,6 +73,9 @@ import androidx.navigation.NavController
 import com.example.doline.DeviceConfiguration
 import com.example.doline.R
 import com.example.doline.capitalize
+import com.example.doline.data.ClientWithProfile
+import com.example.doline.data.UserProfile
+import com.example.doline.data.UserProfileRepository
 import com.example.doline.data.BatchRepository
 import com.example.doline.data.CartItem
 import com.example.doline.data.CartItemEntity
@@ -99,6 +102,7 @@ import com.example.doline.ui.theme.Rounding
 import com.example.doline.ui.theme.Spacing
 import com.example.doline.views.components.AppText
 import com.example.doline.views.components.CameraScannerOverlay
+import com.example.doline.views.components.ClientSelection
 import com.example.doline.views.components.DeviceSize
 import com.example.doline.views.components.ErrorMessage
 import com.example.doline.views.components.FixedPriceAddToCartForm
@@ -186,7 +190,7 @@ fun PosScreen(navController: NavController, viewModel: PosScreenViewModel){
                             clients = clients,
                             storeId = storeId,
                             onAddClient = {
-                                viewModel.addClient(it)
+                                viewModel.onClientSelectionChanged(it)
                             },
                             client = client
                         )
@@ -381,7 +385,7 @@ fun PosScreen(navController: NavController, viewModel: PosScreenViewModel){
                                     clients = clients,
                                     storeId = storeId,
                                     onAddClient = {
-                                        viewModel.addClient(it)
+                                        viewModel.onClientSelectionChanged(it)
                                     },
                                     client = client
                                 )
@@ -743,7 +747,8 @@ class PosScreenViewModel @Inject constructor(
     private val orderRepository: OrderRepository,
     private val orderItemRepository: OrderItemRepository,
     private val batchRepository: BatchRepository,
-    private val clientRepository: ClientRepository
+    private val clientRepository: ClientRepository,
+    private val profileRepository: UserProfileRepository
 ): ViewModel(){
     val storeId = savedState.get<Long>("storeId")
     private val _uiState = MutableStateFlow<ScreenUiState>(ScreenUiState.Loading)
@@ -766,26 +771,31 @@ class PosScreenViewModel @Inject constructor(
     private val _scanError = MutableStateFlow("")
     val scanError: StateFlow<String> = _scanError.asStateFlow()
 
-    private val _clients = MutableStateFlow<List<ClientEntity>>(emptyList())
-    val clients: StateFlow<List<ClientEntity>> = _clients
+    private val _clients = MutableStateFlow<List<ClientWithProfile>>(emptyList())
+    val clients: StateFlow<List<ClientWithProfile>> = _clients
 
-    private val _client = MutableStateFlow<ClientEntity?>(null)
-    val client: StateFlow<ClientEntity?> = _client
-    fun addClient(clientEntity: ClientEntity?){
-        if(clientEntity == null){
-            _client.value = clientEntity
-            return
-        }
-        viewModelScope.launch {
-            val cl = _clients.value.find { c -> c.id > 0 && c.id == clientEntity.id }
-            if(cl == null){
-                val clientId = clientRepository.insert(clientEntity)
-                _client.value = clientEntity.copy(id = clientId)
-            }else{
-                _client.value = cl
-            }
+    private val _client = MutableStateFlow<ClientWithProfile?>(null)
+    val client: StateFlow<ClientWithProfile?> = _client
+
+    fun onClientSelectionChanged(selection: ClientSelection){
+        when (selection) {
+            is ClientSelection.None -> _client.value = null
+            is ClientSelection.Existing -> _client.value = selection.client
+            is ClientSelection.New -> createClient(selection.name, selection.phone, selection.address)
         }
     }
+
+    private fun createClient(name: String, phone: String?, address: String?){
+        val storeId = storeId ?: return
+        viewModelScope.launch {
+            val profile = UserProfile(fullNames = name, phone = phone, defaultAddress = address)
+            val profileId = profileRepository.insertProfile(profile)
+            val clientEntity = ClientEntity(storeId = storeId, profileId = profileId)
+            val clientId = clientRepository.insert(clientEntity)
+            _client.value = ClientWithProfile(clientEntity.copy(id = clientId), profile.copy(id = profileId))
+        }
+    }
+
     private suspend fun fetchClients(){
         storeId?: return
         clientRepository.getClients(storeId).collect {
@@ -988,7 +998,7 @@ class PosScreenViewModel @Inject constructor(
             progress = progress,
             status = status,
             amountReceived = _receivedAmount.value,
-            clientId = _client.value?.id,
+            clientId = _client.value?.client?.id,
             creditBalance = cb
         )
         viewModelScope.launch {

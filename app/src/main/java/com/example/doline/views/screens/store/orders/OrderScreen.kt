@@ -1,7 +1,9 @@
 package com.example.doline.views.screens.store.orders
 
 
+import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -54,8 +56,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import com.example.doline.R
-import com.example.doline.data.ClientEntity
 import com.example.doline.data.ClientRepository
+import com.example.doline.data.ClientWithProfile
 import com.example.doline.data.CreditPayment
 import com.example.doline.data.Order
 import com.example.doline.data.OrderEntity
@@ -90,6 +92,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+@RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OrderScreen(navController: NavController, viewModel: OrderScreenViewModel){
@@ -312,7 +315,7 @@ fun OrderScreen(navController: NavController, viewModel: OrderScreenViewModel){
                                 DropdownMenuItem(
                                     text = { AppText("View client") },
                                     onClick = {
-                                        navController.navigate("$storeId/clients/${order.client.id}")
+                                        navController.navigate("$storeId/clients/${order.client.client.id}")
                                     },
                                     leadingIcon = {
                                         Icon(painter = painterResource(R.drawable.user), modifier = Modifier.size(IconSize.NORMAL), contentDescription = null)
@@ -838,7 +841,7 @@ fun MakePaymentSheet(
 @Composable
 fun SelectClientSheet(
     open: Boolean,
-    clients: List<ClientEntity>,
+    clients: List<ClientWithProfile>,
     onClose: () -> Unit,
     onSelect: (clientId: Long) -> Unit
 ) {
@@ -868,20 +871,20 @@ fun SelectClientSheet(
                             .fillMaxWidth()
                             .height(320.dp)
                     ) {
-                        items(clients, key = { it.id }) { client ->
+                        items(clients, key = { it.client.id }) { client ->
                             Row(
                                 Modifier
                                     .fillMaxWidth()
-                                    .clickable { onSelect(client.id) }
+                                    .clickable { onSelect(client.client.id) }
                                     .padding(Spacing.MD, Spacing.SM),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column {
-                                    AppText(client.name, variant = TextType.Label)
-                                    if (client.phone != null) {
+                                    AppText(client.profile.fullNames ?: "Unnamed client", variant = TextType.Label)
+                                    if (client.profile.phone != null) {
                                         AppText(
-                                            client.phone,
+                                            client.profile.phone,
                                             variant = TextType.Small,
                                             color = colorScheme.onBackground.copy(.6f)
                                         )
@@ -903,6 +906,7 @@ fun SelectClientSheet(
     }
 }
 
+@RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PaymentsSheet(
@@ -970,7 +974,7 @@ class OrderScreenViewModel @Inject constructor(
     private val _errorMessage = MutableStateFlow("")
     private val _openPaymentSheet = MutableStateFlow(false)
     private val _completeRequested = MutableStateFlow(false)
-    private val _clients = MutableStateFlow<List<ClientEntity>>(emptyList())
+    private val _clients = MutableStateFlow<List<ClientWithProfile>>(emptyList())
 
 
 
@@ -979,7 +983,7 @@ class OrderScreenViewModel @Inject constructor(
     val errorMessage: StateFlow<String> = _errorMessage
     val openPaymentSheet: StateFlow<Boolean> = _openPaymentSheet
     val completeRequested: StateFlow<Boolean> = _completeRequested
-    val clients: StateFlow<List<ClientEntity>> = _clients
+    val clients: StateFlow<List<ClientWithProfile>> = _clients
 
     private suspend fun fetchOrderDetails(){
         if (orderId == null){

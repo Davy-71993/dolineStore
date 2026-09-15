@@ -13,19 +13,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import com.example.doline.data.AuthRepository
 import com.example.doline.data.CategoryEntity
 import com.example.doline.data.CategoryRepository
-import com.example.doline.data.Store
 import com.example.doline.data.StoreRepository
 import com.example.doline.data.SubCategory
 import com.example.doline.data.SubCategoryRepository
 import com.example.doline.data.SupabaseCategory
-import com.example.doline.data.UserProfile
 import com.example.doline.data.UserProfileRepository
 import com.example.doline.ui.theme.Spacing
 import com.example.doline.views.components.AppText
@@ -104,19 +102,17 @@ class InitializationScreenViewModel @Inject constructor(
     private fun initializeData(userId: String) {
         viewModelScope.launch {
             try {
-                // Run fetches in parallel and wait for all of them to complete
-                val profileDeferred = async { fetchProfileFromCloud(userId) }
-                val storesDeferred = async { fetchStoresFromCloud(userId) }
+                // Pull profile/stores from Supabase and upsert them locally (matched by their
+                // cloud id, so re-running this doesn't pile up duplicates), and fetch categories.
+                // Run all three in parallel and wait for them to complete.
+                val profileDeferred = async { profileRepository.pull(userId) }
+                val storesDeferred = async { storeRepository.pull(userId) }
                 val categoriesDeferred = async { fetchCategoriesFromCloud() }
 
-                // Wait for all to finish
-                val profile = profileDeferred.await()
-                val stores = storesDeferred.await()
+                profileDeferred.await()
+                storesDeferred.await()
                 val categories = categoriesDeferred.await()
 
-                // Insert into local database
-                profile.let { profileRepository.insertProfile(it) }
-                stores.forEach { storeRepository.insertStore(it) }
                 categories.forEach { c->
                     categoryRepository.insert(
                         CategoryEntity(
@@ -144,14 +140,6 @@ class InitializationScreenViewModel @Inject constructor(
                 _uiState.value = InitializationScreenUiState.Error(e.message ?: "Unknown error")
             }
         }
-    }
-
-    private suspend fun fetchProfileFromCloud(userId: String): UserProfile {
-        return profileRepository.fetchProfileFromCloud(userId)
-    }
-
-    private suspend fun fetchStoresFromCloud(userId: String): List<Store> {
-        return storeRepository.fetchStoresFromCloud(userId)
     }
 
     private suspend fun fetchCategoriesFromCloud(): List<SupabaseCategory>{

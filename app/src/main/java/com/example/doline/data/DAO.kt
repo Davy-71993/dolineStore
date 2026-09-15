@@ -14,13 +14,25 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface UserProfileDao {
     @Insert
-    suspend fun insertProfile(profile: UserProfile)
+    suspend fun insertProfile(profile: UserProfile): Long
 
     @Update
     suspend fun updateProfile(profile: UserProfile)
 
-    @Query("SELECT * FROM profiles LIMIT 1")
-    fun getProfile(): Flow<UserProfile?>
+    @Query("SELECT * FROM profiles WHERE id = :id LIMIT 1")
+    fun getProfileById(id: Long): Flow<UserProfile?>
+
+    @Query("SELECT * FROM profiles WHERE id = :id LIMIT 1")
+    suspend fun getProfileByIdOnce(id: Long): UserProfile?
+
+    @Query("SELECT * FROM profiles WHERE userId = :userId LIMIT 1")
+    fun getProfileByUserId(userId: String): Flow<UserProfile?>
+
+    @Query("SELECT * FROM profiles WHERE userId = :userId LIMIT 1")
+    suspend fun getProfileByUserIdOnce(userId: String): UserProfile?
+
+    @Query("DELETE FROM profiles WHERE id = :id")
+    suspend fun deleteProfileById(id: Long)
 }
 @Dao
 interface StoreDao {
@@ -28,6 +40,9 @@ interface StoreDao {
     // Get a single store
     @Query("SELECT * FROM stores WHERE id = :id LIMIT 1")
     fun getStoreById(id: Long): Flow<Store?>
+
+    @Query("SELECT * FROM stores WHERE cloudId = :cloudId LIMIT 1")
+    suspend fun getStoreByCloudId(cloudId: Long): Store?
 
     @Insert
     suspend fun insertStore(store: Store): Long
@@ -47,6 +62,10 @@ interface StoreDao {
 
     @Delete
     suspend fun delete(store: Store)
+
+    // Fills in the cloud row id after a queued INSERT is pushed to Supabase for the first time.
+    @Query("UPDATE stores SET cloudId = :cloudId WHERE id = :id")
+    suspend fun updateCloudId(id: Long, cloudId: Long)
 }
 
 @Dao
@@ -246,11 +265,13 @@ interface ClientDao {
     @Delete
     suspend fun delete(client: ClientEntity)
 
+    @Transaction
     @Query("SELECT * FROM clients WHERE storeId = :storeId")
-    fun getClients(storeId: Long): Flow<List<ClientEntity>>
+    fun getClients(storeId: Long): Flow<List<ClientWithProfile>>
 
+    @Transaction
     @Query("SELECT * FROM clients WHERE id = :id LIMIT 1")
-    fun getClientById(id: Long): Flow<ClientEntity?>
+    fun getClientById(id: Long): Flow<ClientWithProfile?>
 }
 
 @Dao
@@ -264,11 +285,13 @@ interface SupplierDao {
     @Delete
     suspend fun delete(supplier: SupplierEntity)
 
+    @Transaction
     @Query("SELECT * FROM suppliers WHERE storeId = :storeId")
-    fun getSuppliers(storeId: Long): Flow<List<SupplierEntity>>
+    fun getSuppliers(storeId: Long): Flow<List<SupplierWithProfile>>
 
+    @Transaction
     @Query("SELECT * FROM suppliers WHERE id = :id LIMIT 1")
-    fun getSupplierById(id: Long): Flow<SupplierEntity?>
+    fun getSupplierById(id: Long): Flow<SupplierWithProfile?>
 
     @Transaction
     @Query("SELECT * FROM suppliers WHERE id = :id LIMIT 1")
@@ -296,11 +319,17 @@ interface StaffDao {
     @Delete
     suspend fun delete(staff: StaffEntity)
 
+    @Transaction
     @Query("SELECT * FROM staffs WHERE storeId = :storeId")
-    fun getStaffs(storeId: Long): Flow<List<StaffEntity>>
+    fun getStaffs(storeId: Long): Flow<List<StaffWithProfile>>
 
+    @Transaction
     @Query("SELECT * FROM staffs WHERE id = :staffId LIMIT 1")
-    fun getStaffById(staffId: Long): Flow<StaffEntity>
+    fun getStaffById(staffId: Long): Flow<StaffWithProfile?>
+
+    @Transaction
+    @Query("SELECT * FROM staffs WHERE id = :staffId LIMIT 1")
+    suspend fun getStaffByIdOnce(staffId: Long): StaffWithProfile?
 }
 
 @Dao
@@ -310,5 +339,32 @@ interface CreditPaymentDao {
 
     @Query("SELECT * FROM credit_payments WHERE orderId = :orderId")
     fun getCreditPayments(orderId: Long): Flow<List<CreditPayment>>
+}
+
+@Dao
+interface SyncQueueDao {
+    @Insert
+    suspend fun enqueue(entry: SyncQueueEntity): Long
+
+    @Query("SELECT * FROM sync_queue ORDER BY id ASC")
+    suspend fun getPending(): List<SyncQueueEntity>
+
+    @Query("SELECT * FROM sync_queue WHERE entityType = :entityType ORDER BY id ASC")
+    suspend fun getPending(entityType: SyncEntityType): List<SyncQueueEntity>
+
+    @Query("UPDATE sync_queue SET attempts = attempts + 1, lastError = :error WHERE id = :id")
+    suspend fun markFailed(id: Long, error: String?)
+
+    @Query("DELETE FROM sync_queue WHERE id = :id")
+    suspend fun delete(id: Long)
+}
+
+@Dao
+interface SyncStateDao {
+    @Query("SELECT * FROM sync_state WHERE entityType = :entityType LIMIT 1")
+    suspend fun get(entityType: SyncEntityType): SyncStateEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(state: SyncStateEntity)
 }
 

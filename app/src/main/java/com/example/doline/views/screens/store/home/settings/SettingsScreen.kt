@@ -40,6 +40,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import com.example.doline.R
+import com.example.doline.data.StaffSessionManager
 import com.example.doline.data.Store
 import com.example.doline.data.StoreRepository
 import com.example.doline.data.models.SettingType
@@ -150,7 +151,10 @@ fun SettingsScreen(navController: NavController,  viewModel: ScreenViewModel){
                         Modifier.padding(Spacing.MD),
                         verticalArrangement = Arrangement.spacedBy(Spacing.MD)
                     ) {
-                        settings.forEach { item ->
+                        val visibleSettings = if (viewModel.isAdmin) settings else settings.filterNot {
+                            it.route == "staff_&_security"
+                        }
+                        visibleSettings.forEach { item ->
                             SettingItem(
                                 item = item,
                                 modifier = Modifier
@@ -197,9 +201,11 @@ fun SettingItem(item: SettingType, modifier: Modifier = Modifier){
 @HiltViewModel
 class ScreenViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private  val storeRepository: StoreRepository
+    private  val storeRepository: StoreRepository,
+    sessionManager: StaffSessionManager
 ): ViewModel(){
     val storeId = savedStateHandle.get<Long>("storeId")
+    val isAdmin: Boolean = sessionManager.session.value?.staff?.staff?.isAdmin == true
     private val _uiState = MutableStateFlow<UiState>(UiState.Loading)
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 

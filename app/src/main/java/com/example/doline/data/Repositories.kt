@@ -1,6 +1,10 @@
 package com.example.doline.data
 
+import android.content.Context
 import androidx.activity.result.contract.ActivityResultContracts
+import com.example.doline.sha256
+import com.google.gson.Gson
+import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.OtpType
@@ -15,6 +19,40 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+
+private val syncPayloadGson = Gson()
+
+// Enqueues a push for a local Store write and wakes the worker to drain it soon. All stores
+// belong to the device owner, so every write is queued unconditionally.
+private suspend fun SyncQueueDao.enqueueStoreSync(context: Context, store: Store, operation: SyncOperation) {
+    enqueue(
+        SyncQueueEntity(
+            entityType = SyncEntityType.STORE,
+            localId = store.id,
+            operation = operation,
+            payload = syncPayloadGson.toJson(store),
+            cloudId = store.cloudId?.toString()
+        )
+    )
+    SyncScheduler.triggerNow(context)
+}
+
+// Enqueues a push for a local UserProfile write and wakes the worker to drain it soon. Only the
+// device owner's profile (the one synced from Supabase auth) has a userId; local-only profiles
+// (staff/client/supplier) have no cloud counterpart to push to, so those writes are skipped.
+private suspend fun SyncQueueDao.enqueueProfileSync(context: Context, profile: UserProfile, operation: SyncOperation) {
+    val userId = profile.userId ?: return
+    enqueue(
+        SyncQueueEntity(
+            entityType = SyncEntityType.PROFILE,
+            localId = profile.id,
+            operation = operation,
+            payload = syncPayloadGson.toJson(profile),
+            cloudId = userId
+        )
+    )
+    SyncScheduler.triggerNow(context)
+}
 
 class AuthRepository @Inject constructor(
     private val auth: Auth
@@ -73,11 +111,47 @@ class AuthRepository @Inject constructor(
 
 class UserProfileRepository @Inject constructor(
     private  val dao: UserProfileDao,
-    private  val supabaseClient: SupabaseClient
+    private  val supabaseClient: SupabaseClient,
+    private val syncQueueDao: SyncQueueDao,
+    private val syncStateDao: SyncStateDao,
+    @ApplicationContext private val context: Context
 ){
-    fun getProfile(): Flow<UserProfile?> = dao.getProfile()
-    suspend fun insertProfile(profile: UserProfile) = dao.insertProfile(profile)
-    suspend fun updateProfile(profile: UserProfile) = dao.updateProfile(profile)
+    fun getProfileById(id: Long): Flow<UserProfile?> = dao.getProfileById(id)
+    fun getProfileByUserId(userId: String): Flow<UserProfile?> = dao.getProfileByUserId(userId)
+    suspend fun getProfileByUserIdOnce(userId: String): UserProfile? = dao.getProfileByUserIdOnce(userId)
+
+    suspend fun insertProfile(profile: UserProfile): Long {
+        val id = dao.insertProfile(profile)
+        syncQueueDao.enqueueProfileSync(context, profile.copy(id = id), SyncOperation.INSERT)
+        return id
+    }
+
+    suspend fun updateProfile(profile: UserProfile) {
+        dao.updateProfile(profile)
+        syncQueueDao.enqueueProfileSync(context, profile, SyncOperation.UPDATE)
+    }
+
+    suspend fun deleteProfile(id: Long) {
+        val existing = dao.getProfileByIdOnce(id)
+        dao.deleteProfileById(id)
+        existing?.let { syncQueueDao.enqueueProfileSync(context, it, SyncOperation.DELETE) }
+    }
+
+    // Updates the owner's existing local profile row if one already exists for this cloud
+    // userId, instead of piling up a duplicate on every login. Returns the local row id.
+    // Writes via the DAO directly, not the enqueue-wrapped methods above: this is pulling data
+    // FROM the cloud, so it must not turn around and queue a push back for it.
+    suspend fun upsertCloudProfile(profile: UserProfile): Long {
+        val userId = profile.userId ?: return dao.insertProfile(profile)
+        val existing = dao.getProfileByUserIdOnce(userId)
+        return if (existing != null) {
+            dao.updateProfile(profile.copy(id = existing.id))
+            existing.id
+        } else {
+            dao.insertProfile(profile)
+        }
+    }
+
     suspend fun fetchProfileFromCloud(userId: String): UserProfile {
         return withContext(Dispatchers.IO){
             supabaseClient.from("profiles").select(
@@ -89,18 +163,44 @@ class UserProfileRepository @Inject constructor(
             }
         }.decodeSingle<UserProfile>()
     }
+
+    // Pulls the owner's profile from Supabase and upserts it locally, then records when this
+    // ran in sync_state. lastPulledAt isn't used to filter the cloud query yet - profiles is a
+    // single row per owner, so a full fetch every pull is cheap - but it establishes the
+    // watermark for when other entities need real incremental filtering.
+    suspend fun pull(userId: String) {
+        val cloudProfile = fetchProfileFromCloud(userId)
+        upsertCloudProfile(cloudProfile)
+        syncStateDao.upsert(SyncStateEntity(SyncEntityType.PROFILE, System.currentTimeMillis()))
+    }
 }
 
 class StoreRepository @Inject constructor(
     private val dao: StoreDao,
-    private val supabaseClient: SupabaseClient
+    private val supabaseClient: SupabaseClient,
+    private val syncQueueDao: SyncQueueDao,
+    private val syncStateDao: SyncStateDao,
+    @ApplicationContext private val context: Context
 ) {
     fun getStoreById(storeId: Long): Flow<Store?> = dao.getStoreById(storeId)
     fun getStoreWithItems(storeId: Long): Flow<StoreWithItems?> = dao.getStoreWithItems(storeId)
     fun getAllStores(): Flow<List<Store>> = dao.getAllStores()
-    suspend fun insertStore(store: Store) = dao.insertStore(store)
-    suspend fun updateStore(store: Store) = dao.update(store)
-    suspend fun deleteStore(store: Store) = dao.delete(store)
+
+    suspend fun insertStore(store: Store): Long {
+        val id = dao.insertStore(store)
+        syncQueueDao.enqueueStoreSync(context, store.copy(id = id), SyncOperation.INSERT)
+        return id
+    }
+
+    suspend fun updateStore(store: Store) {
+        dao.update(store)
+        syncQueueDao.enqueueStoreSync(context, store, SyncOperation.UPDATE)
+    }
+
+    suspend fun deleteStore(store: Store) {
+        dao.delete(store)
+        syncQueueDao.enqueueStoreSync(context, store, SyncOperation.DELETE)
+    }
     suspend fun fetchStoresFromCloud(userId: String): List<Store> {
         return withContext(Dispatchers.IO) {
             val result = supabaseClient.from("stores")
@@ -111,6 +211,30 @@ class StoreRepository @Inject constructor(
                 }.decodeList<Store>()
             result
         }
+    }
+
+    // Matches a cloud-fetched store to its local row by cloudId, updating it in place if one
+    // already exists instead of inserting a duplicate on every pull. Writes via the DAO
+    // directly, not insertStore/updateStore: this is pulling data FROM the cloud, so it must
+    // not turn around and queue a push back for it.
+    suspend fun upsertCloudStore(store: Store): Long {
+        val existing = store.cloudId?.let { dao.getStoreByCloudId(it) }
+        return if (existing != null) {
+            dao.update(store.copy(id = existing.id))
+            existing.id
+        } else {
+            dao.insertStore(store)
+        }
+    }
+
+    // Pulls all of the owner's stores from Supabase and upserts them locally, then records when
+    // this ran in sync_state. lastPulledAt isn't used to filter the cloud query yet - a store
+    // owner only has a handful of stores, so a full fetch every pull is cheap - but it
+    // establishes the watermark for when incremental filtering is worth adding.
+    suspend fun pull(keeperId: String) {
+        val stores = fetchStoresFromCloud(keeperId)
+        stores.forEach { upsertCloudStore(it) }
+        syncStateDao.upsert(SyncStateEntity(SyncEntityType.STORE, System.currentTimeMillis()))
     }
 }
 
@@ -246,25 +370,33 @@ class OrderItemRepository @Inject constructor(
 }
 
 class ClientRepository @Inject constructor(
-    private val dao: ClientDao
+    private val dao: ClientDao,
+    private val profileDao: UserProfileDao
 ){
     suspend fun insert(client: ClientEntity): Long = dao.insert(client)
-    fun getClients(storeId: Long): Flow<List<ClientEntity>> = dao.getClients(storeId)
-    fun getClientById(clientId: Long): Flow<ClientEntity?> = dao.getClientById(clientId)
+    fun getClients(storeId: Long): Flow<List<ClientWithProfile>> = dao.getClients(storeId)
+    fun getClientById(clientId: Long): Flow<ClientWithProfile?> = dao.getClientById(clientId)
     suspend fun editClient(client: ClientEntity) = dao.update(client)
-    suspend fun deleteClient(client: ClientEntity) = dao.delete(client)
+    suspend fun deleteClient(client: ClientEntity) {
+        dao.delete(client)
+        profileDao.deleteProfileById(client.profileId)
+    }
 }
 
 class SupplierRepository @Inject constructor(
-    private val dao: SupplierDao
+    private val dao: SupplierDao,
+    private val profileDao: UserProfileDao
 ){
     suspend fun insert(supplier: SupplierEntity): Long = dao.insert(supplier)
-    fun getSuppliers(storeId: Long): Flow<List<SupplierEntity>> = dao.getSuppliers(storeId)
-    fun getSupplierById(supplierId: Long): Flow<SupplierEntity?> = dao.getSupplierById(supplierId)
+    fun getSuppliers(storeId: Long): Flow<List<SupplierWithProfile>> = dao.getSuppliers(storeId)
+    fun getSupplierById(supplierId: Long): Flow<SupplierWithProfile?> = dao.getSupplierById(supplierId)
     fun getSupplierWithItems(supplierId: Long): Flow<SupplierWithItems?> = dao.getSupplierWithItems(supplierId)
     fun getItemWithSuppliers(itemId: Long): Flow<ItemWithSuppliers?> = dao.getItemWithSuppliers(itemId)
     suspend fun editSupplier(supplier: SupplierEntity) = dao.update(supplier)
-    suspend fun deleteSupplier(supplier: SupplierEntity) = dao.delete(supplier)
+    suspend fun deleteSupplier(supplier: SupplierEntity) {
+        dao.delete(supplier)
+        profileDao.deleteProfileById(supplier.profileId)
+    }
     suspend fun linkItemToSupplier(itemId: Long, supplierId: Long) =
         dao.linkItemToSupplier(ItemSupplierCrossRef(itemId, supplierId))
     suspend fun unlinkItemFromSupplier(itemId: Long, supplierId: Long) =
@@ -272,13 +404,24 @@ class SupplierRepository @Inject constructor(
 }
 
 class StaffRepository @Inject constructor(
-    private val dao: StaffDao
+    private val dao: StaffDao,
+    private val profileDao: UserProfileDao
 ){
     suspend fun insert(staff: StaffEntity): Long = dao.insert(staff)
-    fun getStaffs(storeId: Long): Flow<List<StaffEntity>> = dao.getStaffs(storeId)
-    fun getStaffById(staffId: Long): Flow<StaffEntity?> = dao.getStaffById(staffId)
+    fun getStaffs(storeId: Long): Flow<List<StaffWithProfile>> = dao.getStaffs(storeId)
+    fun getStaffById(staffId: Long): Flow<StaffWithProfile?> = dao.getStaffById(staffId)
+    suspend fun getStaffByIdOnce(staffId: Long): StaffWithProfile? = dao.getStaffByIdOnce(staffId)
     suspend fun editStaff(staff: StaffEntity) = dao.update(staff)
-    suspend fun deleteStaff(staff: StaffEntity) = dao.delete(staff)
+    suspend fun deleteStaff(staff: StaffEntity) {
+        dao.delete(staff)
+        profileDao.deleteProfileById(staff.profileId)
+    }
+
+    /** Verifies [passKey] against the stored hash for [staffId], returning the staff on success. */
+    suspend fun verifyPassKey(staffId: Long, passKey: String): StaffWithProfile? {
+        val staff = dao.getStaffByIdOnce(staffId) ?: return null
+        return if (staff.staff.passKeyHash == passKey.sha256()) staff else null
+    }
 }
 
 class CreditPaymentRepository @Inject constructor(

@@ -91,6 +91,11 @@ fun String.capitalize(): String {
     }
 }
 
+fun String.sha256(): String {
+    val bytes = java.security.MessageDigest.getInstance("SHA-256").digest(toByteArray())
+    return bytes.joinToString("") { "%02x".format(it) }
+}
+
 
 @RequiresApi(Build.VERSION_CODES.O)
 fun timestampToDateTime(timestamp: Long?): String {

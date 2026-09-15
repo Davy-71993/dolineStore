@@ -5,6 +5,8 @@ import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -18,9 +20,11 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
@@ -58,6 +62,7 @@ import com.example.doline.views.screens.store.inventory.ItemViewModel
 import com.example.doline.views.screens.store.inventory.RestockScreen
 import com.example.doline.views.screens.store.inventory.RestockViewModel
 import com.example.doline.views.screens.store.inventory.SearchInventoryScreen
+import com.example.doline.views.screens.store.home.settings.ChangePassKeyScreen
 import com.example.doline.views.screens.store.home.settings.CreateDeliveryZone
 import com.example.doline.views.screens.store.home.settings.CreateStaffScreen
 import com.example.doline.views.screens.store.home.settings.GeneralSettingsScreen
@@ -103,6 +108,30 @@ fun StoreMain(storeId: Long?){
         return
     }
 
+    // Staff PIN-lock: staff must unlock the till, and get auto-clocked-out when idle.
+    val storeGateViewModel: StoreGateViewModel = hiltViewModel()
+    val staffs by storeGateViewModel.staffs(storeId).collectAsState(initial = null)
+    val staffSession by storeGateViewModel.sessionManager.session.collectAsState()
+
+    val currentStaffs = staffs ?: return
+    if (currentStaffs.isEmpty()) {
+        AdminSetupScreen(storeId = storeId)
+        return
+    }
+    if (staffSession?.storeId != storeId) {
+        StaffLockScreen(storeId = storeId, staffs = currentStaffs)
+        return
+    }
+
+    val activityTrackingModifier = Modifier.pointerInput(Unit) {
+        awaitPointerEventScope {
+            while (true) {
+                awaitPointerEvent(PointerEventPass.Initial)
+                storeGateViewModel.sessionManager.notifyActivity()
+            }
+        }
+    }
+
     // Tabs
     val tabs = listOf(
         TabItem("store", "Store", R.drawable.dashboard),
@@ -113,6 +142,7 @@ fun StoreMain(storeId: Long?){
     )
 
     Scaffold(
+        modifier = activityTrackingModifier,
         bottomBar = {
             NavigationBar(
                 containerColor = colorScheme.background,
@@ -253,8 +283,25 @@ fun StoreMain(storeId: Long?){
             composable("store/{storeId}/settings/shipping_&_deliveries") { ShippingSettingsScreen(navController = storeNavController) }
             composable("store/{storeId}/settings/shipping_&_deliveries/create_zone"){ CreateDeliveryZone(navController = storeNavController) }
             composable("store/{storeId}/settings/taxation") { TaxationSettingsScreen(navController = storeNavController) }
-            composable("store/{storeId}/settings/staff_&_security") { StaffSettingsScreen(navController = storeNavController) }
-            composable("store/{storeId}/settings/staff_&_security/create_staff") { CreateStaffScreen(navController = storeNavController) }
+            composable(
+                "store/{storeId}/settings/staff_&_security",
+                listOf(navArgument("storeId") { type = NavType.LongType })
+            ) { StaffSettingsScreen(navController = storeNavController) }
+            composable(
+                "store/{storeId}/settings/staff_&_security/create_staff",
+                listOf(navArgument("storeId") { type = NavType.LongType })
+            ) { CreateStaffScreen(navController = storeNavController) }
+            composable(
+                "store/{storeId}/settings/staff_&_security/edit_staff/{staffId}",
+                listOf(
+                    navArgument("storeId") { type = NavType.LongType },
+                    navArgument("staffId") { type = NavType.LongType }
+                )
+            ) { CreateStaffScreen(navController = storeNavController) }
+            composable(
+                "store/{storeId}/settings/change_passkey",
+                listOf(navArgument("storeId") { type = NavType.LongType })
+            ) { ChangePassKeyScreen(navController = storeNavController) }
             composable("store/{storeId}/settings/pos_hardware") { PosSettingsScreen(navController = storeNavController) }
             composable("store/{storeId}/help") { HelpScreen(navController = storeNavController) }
             composable("store/{storeId}/help/feedback") { FeedbackScreen(navController = storeNavController) }

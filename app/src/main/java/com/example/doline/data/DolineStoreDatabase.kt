@@ -27,8 +27,10 @@ import androidx.room.TypeConverters
         StaffEntity::class,
         CreditPayment::class,
         SupplierEntity::class,
-        ItemSupplierCrossRef::class],
-    version = 12,
+        ItemSupplierCrossRef::class,
+        SyncQueueEntity::class,
+        SyncStateEntity::class],
+    version = 17,
     exportSchema = false
 )
 @TypeConverters(
@@ -40,7 +42,9 @@ import androidx.room.TypeConverters
     ItemImageConverter::class,
     StoreCategoryConverter::class,
     DeterminantsConverter::class,
-    CartItemConverters::class
+    CartItemConverters::class,
+    SyncEntityTypeConverter::class,
+    SyncOperationConverter::class
 )
 abstract class DolineStoreDatabase: RoomDatabase() {
     abstract fun userProfileDao(): UserProfileDao
@@ -59,6 +63,8 @@ abstract class DolineStoreDatabase: RoomDatabase() {
     abstract fun staffDao(): StaffDao
     abstract fun creditPaymentDao(): CreditPaymentDao
     abstract fun supplierDao(): SupplierDao
+    abstract fun syncQueueDao(): SyncQueueDao
+    abstract fun syncStateDao(): SyncStateDao
 
     companion object {
         @Volatile

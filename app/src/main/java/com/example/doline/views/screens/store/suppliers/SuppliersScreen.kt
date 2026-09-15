@@ -46,6 +46,9 @@ import androidx.navigation.NavController
 import com.example.doline.R
 import com.example.doline.data.SupplierEntity
 import com.example.doline.data.SupplierRepository
+import com.example.doline.data.SupplierWithProfile
+import com.example.doline.data.UserProfile
+import com.example.doline.data.UserProfileRepository
 import com.example.doline.ui.theme.IconSize
 import com.example.doline.ui.theme.Rounding
 import com.example.doline.ui.theme.Spacing
@@ -150,10 +153,10 @@ fun SuppliersScreen(navController: NavController, viewModel: SuppliersScreenView
                         Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(Spacing.SM)
                     ) {
-                        items(suppliers, key = { it.id }) { supplier ->
+                        items(suppliers, key = { it.supplier.id }) { supplier ->
                             SupplierListItem(
                                 supplier = supplier,
-                                onClick = { navController.navigate("$storeId/suppliers/${supplier.id}") }
+                                onClick = { navController.navigate("$storeId/suppliers/${supplier.supplier.id}") }
                             )
                         }
                         item { Spacer(Modifier.height(70.dp)) }
@@ -165,7 +168,7 @@ fun SuppliersScreen(navController: NavController, viewModel: SuppliersScreenView
 }
 
 @Composable
-private fun SupplierListItem(supplier: SupplierEntity, onClick: () -> Unit) {
+private fun SupplierListItem(supplier: SupplierWithProfile, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -176,10 +179,10 @@ private fun SupplierListItem(supplier: SupplierEntity, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column {
-            AppText(supplier.name, variant = TextType.Label)
+            AppText(supplier.profile.fullNames ?: "Unnamed supplier", variant = TextType.Label)
             Spacer(Modifier.height(2.dp))
             AppText(
-                supplier.phone ?: supplier.address ?: "No contact details",
+                supplier.profile.phone ?: supplier.profile.defaultAddress ?: "No contact details",
                 variant = TextType.Small,
                 color = colorScheme.onBackground.copy(.6f)
             )
@@ -271,15 +274,16 @@ private fun AddSupplierSheet(
 @HiltViewModel
 class SuppliersScreenViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private val supplierRepository: SupplierRepository
+    private val supplierRepository: SupplierRepository,
+    private val profileRepository: UserProfileRepository
 ) : ViewModel() {
     val storeId = savedStateHandle.get<Long>("storeId")
 
     private val _uiState = MutableStateFlow<SuppliersScreenUiState>(SuppliersScreenUiState.Loading)
     val uiState: StateFlow<SuppliersScreenUiState> = _uiState
 
-    private val _suppliers = MutableStateFlow<List<SupplierEntity>>(emptyList())
-    val suppliers: StateFlow<List<SupplierEntity>> = _suppliers
+    private val _suppliers = MutableStateFlow<List<SupplierWithProfile>>(emptyList())
+    val suppliers: StateFlow<List<SupplierWithProfile>> = _suppliers
 
     init {
         viewModelScope.launch { fetchSuppliers() }
@@ -304,9 +308,10 @@ class SuppliersScreenViewModel @Inject constructor(
         if (storeId == null) return
         viewModelScope.launch {
             try {
-                supplierRepository.insert(
-                    SupplierEntity(storeId = storeId, name = name, phone = phone, address = address)
+                val profileId = profileRepository.insertProfile(
+                    UserProfile(fullNames = name, phone = phone, defaultAddress = address)
                 )
+                supplierRepository.insert(SupplierEntity(storeId = storeId, profileId = profileId))
             } catch (e: Exception) {
                 e.printStackTrace()
             }

@@ -35,3 +35,11 @@ enum class OrderProgress {
 enum class OrderStatus {
     PAID, CREDIT, DRAFT
 }
+
+enum class SyncEntityType {
+    PROFILE, STORE
+}
+
+enum class SyncOperation {
+    INSERT, UPDATE, DELETE
+}

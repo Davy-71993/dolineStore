@@ -53,13 +53,19 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.example.doline.R
 import com.example.doline.data.CartItem
-import com.example.doline.data.ClientEntity
+import com.example.doline.data.ClientWithProfile
 import com.example.doline.data.Currency
 import com.example.doline.data.OrderProgress
 import com.example.doline.data.Pricing
 import com.example.doline.data.PricingDetails
 import com.example.doline.ui.theme.IconSize
 import com.example.doline.ui.theme.Spacing
+
+sealed class ClientSelection {
+    data object None : ClientSelection()
+    data class Existing(val client: ClientWithProfile) : ClientSelection()
+    data class New(val name: String, val phone: String?, val address: String?) : ClientSelection()
+}
 
 @Composable
 fun ShoppingCart(
@@ -73,10 +79,10 @@ fun ShoppingCart(
     onReceivedAmountChanged: (Double?) -> Unit,
     receivedAmount: Double? = null,
     error: String? = null,
-    onAddClient: (ClientEntity?) -> Unit,
-    clients: List<ClientEntity>,
+    onAddClient: (ClientSelection) -> Unit,
+    clients: List<ClientWithProfile>,
     storeId: Long?,
-    client: ClientEntity? = null
+    client: ClientWithProfile? = null
 ){
     storeId ?: return // Return nothing if the storeId is null.
 
@@ -114,7 +120,7 @@ fun ShoppingCart(
                 }
             }
             AppText(
-                text= client?.name ?: "Shopping cart",
+                text= client?.profile?.fullNames ?: "Shopping cart",
                 variant = TextType.Heading,
                 maxLines = 1
             )
@@ -145,7 +151,7 @@ fun ShoppingCart(
                                 text = {
                                     TextButton(
                                         onClick = {
-                                            onAddClient(null)
+                                            onAddClient(ClientSelection.None)
                                             expanded = false
                                         },
                                         colors = ButtonDefaults.buttonColors(
@@ -166,7 +172,7 @@ fun ShoppingCart(
                             text = {
                                 AddClientForm(
                                     onClose = {expanded = false},
-                                    onNewClient = onAddClient,
+                                    onSelect = onAddClient,
                                     storeId = storeId,
                                     clients = clients,
                                     title = if (client == null) "Add Client" else "Change Client"
@@ -498,8 +504,8 @@ fun DeleteCartItemDialog(action: () -> Unit, item: CartItem){
 @Composable
 fun AddClientForm(
     onClose: () -> Unit,
-    onNewClient: (client: ClientEntity) -> Unit,
-    clients: List<ClientEntity> = emptyList(),
+    onSelect: (ClientSelection) -> Unit,
+    clients: List<ClientWithProfile> = emptyList(),
     storeId: Long,
     title: String = "Add Client"
 ){
@@ -555,11 +561,10 @@ fun AddClientForm(
                 if(isNew){
                     item {
                         NewClientForm(
-                            onNewClient = {
-                                onNewClient(it)
+                            onSubmit = { name, phone, address ->
+                                onSelect(ClientSelection.New(name, phone, address))
                                 onClose()
-                            },
-                            storeId = storeId
+                            }
                         )
                     }
                 }else{
@@ -578,7 +583,7 @@ fun AddClientForm(
                             item {
                                 TextButton(
                                     {
-                                        onNewClient(c)
+                                        onSelect(ClientSelection.Existing(c))
                                         onClose()
                                     },
                                     colors = ButtonDefaults.buttonColors(
@@ -589,8 +594,8 @@ fun AddClientForm(
                                         Modifier.fillMaxWidth(),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        AppText(c.name, maxLines = 1)
-                                        AppText("${c.address} - ${c.phone}", maxLines = 1, variant = TextType.Small, color = colorScheme.onBackground.copy(.6f))
+                                        AppText(c.profile.fullNames ?: "Unnamed client", maxLines = 1)
+                                        AppText("${c.profile.defaultAddress} - ${c.profile.phone}", maxLines = 1, variant = TextType.Small, color = colorScheme.onBackground.copy(.6f))
                                     }
                                 }
                             }
@@ -603,14 +608,16 @@ fun AddClientForm(
 }
 
 @Composable
-fun NewClientForm(onNewClient: (client: ClientEntity) -> Unit, storeId: Long){
-    var client by remember { mutableStateOf(ClientEntity(name = "", address = "", phone = "", storeId = storeId)) }
+fun NewClientForm(onSubmit: (name: String, phone: String?, address: String?) -> Unit){
+    var name by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var address by remember { mutableStateOf("") }
     var nameError by remember { mutableStateOf("") }
     Column(Modifier.padding(Spacing.MD)) {
         TextInputField(
-            value = client.name,
+            value = name,
             onValueChange = {
-                client =  client.copy(name = it)
+                name = it
                 nameError = ""
             },
             isError = nameError.isNotBlank(),
@@ -619,24 +626,24 @@ fun NewClientForm(onNewClient: (client: ClientEntity) -> Unit, storeId: Long){
         )
         Spacer(Modifier.height(10.dp))
         TextInputField(
-            value = client.phone ?: "",
-            onValueChange = { client =  client.copy(phone = it) },
+            value = phone,
+            onValueChange = { phone = it },
             label = "Phone"
         )
         Spacer(Modifier.height(10.dp))
         TextInputField(
-            value = client.address ?: "",
-            onValueChange = { client =  client.copy(address = it)},
+            value = address,
+            onValueChange = { address = it },
             label = "Address"
         )
         Spacer(Modifier.height(Spacing.MD))
         TextButton(
             onClick = {
-                if (client.name.isBlank()){
+                if (name.isBlank()){
                     nameError = "The client name is required"
                     return@TextButton
                 }
-                onNewClient(client)
+                onSubmit(name.trim(), phone.trim().ifBlank { null }, address.trim().ifBlank { null })
             },
             colors = ButtonDefaults.buttonColors(
                 containerColor = colorScheme.primary

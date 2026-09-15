@@ -46,6 +46,9 @@ import androidx.navigation.NavController
 import com.example.doline.R
 import com.example.doline.data.ClientEntity
 import com.example.doline.data.ClientRepository
+import com.example.doline.data.ClientWithProfile
+import com.example.doline.data.UserProfile
+import com.example.doline.data.UserProfileRepository
 import com.example.doline.ui.theme.IconSize
 import com.example.doline.ui.theme.Rounding
 import com.example.doline.ui.theme.Spacing
@@ -150,10 +153,10 @@ fun ClientsScreen(navController: NavController, viewModel: ClientsScreenViewMode
                         Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(Spacing.SM)
                     ) {
-                        items(clients, key = { it.id }) { client ->
+                        items(clients, key = { it.client.id }) { client ->
                             ClientListItem(
                                 client = client,
-                                onClick = { navController.navigate("$storeId/clients/${client.id}") }
+                                onClick = { navController.navigate("$storeId/clients/${client.client.id}") }
                             )
                         }
                         item { Spacer(Modifier.height(70.dp)) }
@@ -165,7 +168,7 @@ fun ClientsScreen(navController: NavController, viewModel: ClientsScreenViewMode
 }
 
 @Composable
-private fun ClientListItem(client: ClientEntity, onClick: () -> Unit) {
+private fun ClientListItem(client: ClientWithProfile, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -176,10 +179,10 @@ private fun ClientListItem(client: ClientEntity, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column {
-            AppText(client.name, variant = TextType.Label)
+            AppText(client.profile.fullNames ?: "Unnamed client", variant = TextType.Label)
             Spacer(Modifier.height(2.dp))
             AppText(
-                client.phone ?: client.address ?: "No contact details",
+                client.profile.phone ?: client.profile.defaultAddress ?: "No contact details",
                 variant = TextType.Small,
                 color = colorScheme.onBackground.copy(.6f)
             )
@@ -271,15 +274,16 @@ private fun AddClientSheet(
 @HiltViewModel
 class ClientsScreenViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private val clientRepository: ClientRepository
+    private val clientRepository: ClientRepository,
+    private val profileRepository: UserProfileRepository
 ) : ViewModel() {
     val storeId = savedStateHandle.get<Long>("storeId")
 
     private val _uiState = MutableStateFlow<ClientsScreenUiState>(ClientsScreenUiState.Loading)
     val uiState: StateFlow<ClientsScreenUiState> = _uiState
 
-    private val _clients = MutableStateFlow<List<ClientEntity>>(emptyList())
-    val clients: StateFlow<List<ClientEntity>> = _clients
+    private val _clients = MutableStateFlow<List<ClientWithProfile>>(emptyList())
+    val clients: StateFlow<List<ClientWithProfile>> = _clients
 
     init {
         viewModelScope.launch { fetchClients() }
@@ -304,9 +308,10 @@ class ClientsScreenViewModel @Inject constructor(
         if (storeId == null) return
         viewModelScope.launch {
             try {
-                clientRepository.insert(
-                    ClientEntity(storeId = storeId, name = name, phone = phone, address = address)
+                val profileId = profileRepository.insertProfile(
+                    UserProfile(fullNames = name, phone = phone, defaultAddress = address)
                 )
+                clientRepository.insert(ClientEntity(storeId = storeId, profileId = profileId))
             } catch (e: Exception) {
                 e.printStackTrace()
             }
