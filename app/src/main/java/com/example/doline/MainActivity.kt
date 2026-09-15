@@ -1,12 +1,15 @@
 package com.example.doline
 
 import android.app.Application
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.example.doline.data.SyncScheduler
+import io.github.jan.supabase.SupabaseClient
+import io.github.jan.supabase.auth.handleDeeplinks
 import javax.inject.Inject
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -39,6 +42,9 @@ import com.example.doline.views.screens.welcome.SplashScreen
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
+    @Inject
+    lateinit var supabaseClient: SupabaseClient
+
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,11 +54,20 @@ class MainActivity : ComponentActivity() {
                 darkScrim = backgroundLight.toArgb()
             )
         )
+        supabaseClient.handleDeeplinks(intent)
         setContent {
             AppTheme {
                 AppNavigation()
             }
         }
+    }
+
+    // MainActivity is singleTask, so the OAuth redirect (doline://auth) arrives here instead
+    // of creating a new instance - handleDeeplinks exchanges the code and updates Auth's
+    // sessionStatus, which screens observing it (e.g. SplashScreen, SignInViewModel) react to.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        supabaseClient.handleDeeplinks(intent)
     }
 }
 

@@ -1,6 +1,7 @@
 package com.example.doline.views.screens.stores
 
-
+import android.app.Activity
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -69,6 +71,14 @@ import javax.inject.Inject
 fun StoresListScreen(navController: NavHostController, viewModel: StoreListViewModel = hiltViewModel()) {
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
     val uiState by viewModel.screenState.collectAsState()
+
+    // Stores is the app's home screen once signed in - whatever auth screens (login/register/
+    // initialization) are still sitting underneath in the back stack, back here should exit
+    // the app rather than surface them again.
+    val activity = LocalContext.current as? Activity
+    BackHandler(enabled = activity != null) {
+        activity?.finish()
+    }
 
     val windowSizeClass = currentWindowAdaptiveInfo().windowSizeClass
     val deviceConfig = DeviceConfiguration.getWindowSizeClass(windowSizeClass)

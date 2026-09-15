@@ -19,6 +19,7 @@
             android:name=".MainActivity"
             android:windowSoftInputMode="adjustResize"
             android:exported="true"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.Doline">
 
             <!-- FILTER 1: This handles opening the app normally from the phone screen -->

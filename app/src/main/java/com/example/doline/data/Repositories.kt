@@ -8,6 +8,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.OtpType
+import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.auth.providers.Google
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.auth.status.SessionStatus
 import io.github.jan.supabase.auth.user.UserInfo
@@ -17,6 +19,8 @@ import io.github.jan.supabase.postgrest.query.Columns
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
@@ -60,15 +64,16 @@ class AuthRepository @Inject constructor(
     val sessionStatus: Flow<SessionStatus> = auth.sessionStatus
     val currentUser: UserInfo? get() = auth.currentUserOrNull()
     val currentSession: UserSession? get() = auth.currentSessionOrNull()
-    suspend fun register(email: String, password: String): Boolean {
+    // Returns the new auth user's id on success, even if email confirmation is still pending -
+    // signUpWith returns the created user immediately, a session only shows up once confirmed.
+    suspend fun register(email: String, password: String): String? {
         return try {
             auth.signUpWith(Email) {
                 this.email = email
                 this.password = password
-            }
-            true
+            }?.id
         } catch (e: Exception) {
-            false
+            null
         }
     }
     suspend fun login(email: String, password: String): Boolean {
@@ -77,6 +82,18 @@ class AuthRepository @Inject constructor(
                 this.email = email
                 this.password = password
             }
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+    // Opens the system browser for Google's OAuth consent screen and returns as soon as it's
+    // launched - it does not wait for sign-in to complete. The redirect back (doline://auth)
+    // is handled by MainActivity.handleDeeplinks, which exchanges the code and updates
+    // [sessionStatus]; callers should observe that flow to react to the sign-in completing.
+    suspend fun signInWithGoogle(): Boolean {
+        return try {
+            auth.signInWith(Google)
             true
         } catch (e: Exception) {
             false
@@ -168,10 +185,45 @@ class UserProfileRepository @Inject constructor(
     // ran in sync_state. lastPulledAt isn't used to filter the cloud query yet - profiles is a
     // single row per owner, so a full fetch every pull is cheap - but it establishes the
     // watermark for when other entities need real incremental filtering.
+    //
+    // A missing cloud row isn't a failure - it just means nothing has created a profile for
+    // this user yet (right after email/password registration, before the local profile is
+    // pushed up, or a first-time OAuth sign-in that never went through the register form at
+    // all) - so it's swallowed here and handed to ensureLocalProfile instead of surfaced as an
+    // error to whoever is hydrating the app after sign-in.
     suspend fun pull(userId: String) {
-        val cloudProfile = fetchProfileFromCloud(userId)
+        val cloudProfile = try {
+            fetchProfileFromCloud(userId)
+        } catch (e: Exception) {
+            ensureLocalProfile(userId)
+            return
+        }
         upsertCloudProfile(cloudProfile)
         syncStateDao.upsert(SyncStateEntity(SyncEntityType.PROFILE, System.currentTimeMillis()))
+    }
+
+    // Covers a first-time OAuth sign-in (e.g. Google): no local profile exists yet because the
+    // user never went through the register form, and no cloud one exists because nothing has
+    // ever created one. Seeds a minimal profile from whatever Supabase auth already knows about
+    // the user - the OAuth provider's metadata for a Google identity includes their name/avatar
+    // - and lets it push up through the normal outbox. A no-op if a local profile already
+    // exists for this user, or if the current session isn't actually this user.
+    suspend fun ensureLocalProfile(userId: String) {
+        if (dao.getProfileByUserIdOnce(userId) != null) return
+        val user = supabaseClient.auth.currentUserOrNull()?.takeIf { it.id == userId } ?: return
+        val metadata = user.userMetadata
+        val fullNames = metadata?.get("full_name")?.jsonPrimitive?.contentOrNull
+            ?: metadata?.get("name")?.jsonPrimitive?.contentOrNull
+        val avatarUrl = metadata?.get("avatar_url")?.jsonPrimitive?.contentOrNull
+            ?: metadata?.get("picture")?.jsonPrimitive?.contentOrNull
+        insertProfile(
+            UserProfile(
+                userId = userId,
+                email = user.email,
+                fullNames = fullNames,
+                avatarUrl = avatarUrl
+            )
+        )
     }
 }
 

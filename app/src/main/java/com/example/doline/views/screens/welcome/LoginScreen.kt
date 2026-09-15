@@ -21,17 +21,22 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavHostController
@@ -48,6 +53,8 @@ import com.example.doline.views.components.SocialButton
 import com.example.doline.views.components.TextInputField
 import com.example.doline.views.components.TextType
 import dagger.hilt.android.lifecycle.HiltViewModel
+import io.github.jan.supabase.auth.status.SessionStatus
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -68,6 +75,18 @@ fun LoginScreen(navController: NavHostController, viewModel: SignInViewModel = h
         navController.navigate("initialization"){
             popUpTo("initialization"){ inclusive = true}
         }
+    }
+
+    // Google sign-in has no callback for "the user closed the browser without finishing" - the
+    // best signal available is the app resuming without a session having come through.
+    val currentOnResume = rememberUpdatedState { viewModel.onResumed() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) currentOnResume.value()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     FormScreen(
@@ -104,7 +123,7 @@ fun LoginScreen(navController: NavHostController, viewModel: SignInViewModel = h
         ) {
             SocialButton(
                 text = "GOOGLE",
-                onClick = {},
+                onClick = { viewModel.signInWithGoogle() },
                 modifier = Modifier.weight(1f),
                 icon = R.drawable.google_favicon_2025
             )
@@ -261,6 +280,51 @@ class SignInViewModel @Inject constructor(
     val password = _password
     private val _isPasswordVisible = MutableStateFlow(false)
     val isPasswordVisible = _isPasswordVisible
+
+    // True from the moment the Google browser is launched until either a session comes through
+    // or onResumed() decides the user abandoned it.
+    private var googleSignInInProgress = false
+
+    init {
+        // Google sign-in completes asynchronously via MainActivity's deep-link handling, not
+        // as a result of signInWithGoogle() itself - react to the session going Authenticated
+        // instead of a return value.
+        viewModelScope.launch {
+            authenticationRepository.sessionStatus.collect { status ->
+                if (status is SessionStatus.Authenticated) {
+                    googleSignInInProgress = false
+                    _uiState.value = LoginScreenUiState.Success
+                }
+            }
+        }
+    }
+
+    fun signInWithGoogle() {
+        viewModelScope.launch {
+            _uiState.value = LoginScreenUiState.Loading
+            googleSignInInProgress = true
+            val launched = authenticationRepository.signInWithGoogle()
+            if (!launched) {
+                googleSignInInProgress = false
+                _uiState.value = LoginScreenUiState.Error("Couldn't open Google sign-in. Please try again.")
+            }
+        }
+    }
+
+    // Called when the app comes back to the foreground. If a Google sign-in was in flight and
+    // no session has shown up shortly after resuming, the user most likely closed the browser
+    // without finishing - there's no direct cancel callback for that flow, so this is the best
+    // available signal.
+    fun onResumed() {
+        if (!googleSignInInProgress) return
+        viewModelScope.launch {
+            delay(1500)
+            if (googleSignInInProgress && authenticationRepository.currentSession == null) {
+                googleSignInInProgress = false
+                _uiState.value = LoginScreenUiState.Error("Google sign-in was cancelled.")
+            }
+        }
+    }
 
     fun onEmailChange(email: String) {
         _email.value = email
